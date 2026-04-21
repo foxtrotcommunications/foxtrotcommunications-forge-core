@@ -165,12 +165,13 @@ Each segment represents the array position at that nesting level. This means:
 
 ### Joining Parent to Child Tables
 
-**The rule:** split `idx` on `_`, and join on the segments up to the parent's depth.
+**The rule:** for each segment in the parent's `idx`, add one equality condition comparing that segment position in both parent and child. A parent at depth N has N segments — you expand N index conditions.
 
 #### BigQuery
 
 ```sql
--- Join root → experiments (depth 0 → depth 1)
+-- Depth 0 → 1: root (idx="1") → experiments (idx="1_2")
+-- Parent has 1 segment → 1 index condition
 SELECT
     r.*,
     e.experiment_name,
@@ -178,9 +179,10 @@ SELECT
 FROM `project.dataset.frg__root` r
 JOIN `project.dataset.frg__root__expe1` e
     ON  r.ingestion_hash = e.ingestion_hash
-    AND r.idx = SPLIT(e.idx, '_')[OFFSET(0)]
+    AND SPLIT(r.idx, '_')[OFFSET(0)] = SPLIT(e.idx, '_')[OFFSET(0)]
 
--- Join experiments → team (depth 1 → depth 2)
+-- Depth 1 → 2: experiments (idx="1_2") → team (idx="1_2_3")
+-- Parent has 2 segments → 2 index conditions
 SELECT
     e.*,
     t.team_name,
@@ -188,7 +190,21 @@ SELECT
 FROM `project.dataset.frg__root__expe1` e
 JOIN `project.dataset.frg__root__expe1__team1` t
     ON  e.ingestion_hash = t.ingestion_hash
-    AND e.idx = SPLIT(t.idx, '_')[OFFSET(0)] || '_' || SPLIT(t.idx, '_')[OFFSET(1)]
+    AND SPLIT(e.idx, '_')[OFFSET(0)] = SPLIT(t.idx, '_')[OFFSET(0)]
+    AND SPLIT(e.idx, '_')[OFFSET(1)] = SPLIT(t.idx, '_')[OFFSET(1)]
+
+-- Depth 2 → 3: team (idx="1_2_3") → lab_results (idx="1_2_3_1")
+-- Parent has 3 segments → 3 index conditions
+SELECT
+    t.*,
+    l.lab_name,
+    l.result_value
+FROM `project.dataset.frg__root__expe1__team1` t
+JOIN `project.dataset.frg__root__expe1__team1__lab_1` l
+    ON  t.ingestion_hash = l.ingestion_hash
+    AND SPLIT(t.idx, '_')[OFFSET(0)] = SPLIT(l.idx, '_')[OFFSET(0)]
+    AND SPLIT(t.idx, '_')[OFFSET(1)] = SPLIT(l.idx, '_')[OFFSET(1)]
+    AND SPLIT(t.idx, '_')[OFFSET(2)] = SPLIT(l.idx, '_')[OFFSET(2)]
 
 -- Three-level join: root → experiments → team
 SELECT
@@ -198,45 +214,45 @@ SELECT
 FROM `project.dataset.frg__root` r
 JOIN `project.dataset.frg__root__expe1` e
     ON  r.ingestion_hash = e.ingestion_hash
-    AND r.idx = SPLIT(e.idx, '_')[OFFSET(0)]
+    AND SPLIT(r.idx, '_')[OFFSET(0)] = SPLIT(e.idx, '_')[OFFSET(0)]
 JOIN `project.dataset.frg__root__expe1__team1` t
     ON  e.ingestion_hash = t.ingestion_hash
-    AND e.idx = SPLIT(t.idx, '_')[OFFSET(0)] || '_' || SPLIT(t.idx, '_')[OFFSET(1)]
+    AND SPLIT(e.idx, '_')[OFFSET(0)] = SPLIT(t.idx, '_')[OFFSET(0)]
+    AND SPLIT(e.idx, '_')[OFFSET(1)] = SPLIT(t.idx, '_')[OFFSET(1)]
 ```
 
 #### Snowflake
 
 ```sql
--- Join root → experiments (depth 0 → depth 1)
-SELECT
-    r.*,
-    e."experiment_name",
-    e."experiment_status"
+-- Depth 0 → 1: root → experiments (1 condition)
+SELECT r.*, e."experiment_name"
 FROM "DATASET"."FRG__ROOT" r
 JOIN "DATASET"."FRG__ROOT__EXPE1" e
     ON  r."ingestion_hash" = e."ingestion_hash"
-    AND r."idx" = SPLIT_PART(e."idx", '_', 1)
+    AND SPLIT_PART(r."idx", '_', 1) = SPLIT_PART(e."idx", '_', 1)
 
--- Join experiments → team (depth 1 → depth 2)
-SELECT
-    e.*,
-    t."team_name"
+-- Depth 1 → 2: experiments → team (2 conditions)
+SELECT e.*, t."team_name"
 FROM "DATASET"."FRG__ROOT__EXPE1" e
 JOIN "DATASET"."FRG__ROOT__EXPE1__TEAM1" t
     ON  e."ingestion_hash" = t."ingestion_hash"
-    AND e."idx" = SPLIT_PART(t."idx", '_', 1) || '_' || SPLIT_PART(t."idx", '_', 2)
+    AND SPLIT_PART(e."idx", '_', 1) = SPLIT_PART(t."idx", '_', 1)
+    AND SPLIT_PART(e."idx", '_', 2) = SPLIT_PART(t."idx", '_', 2)
 ```
 
 ### General Join Formula
 
-For a parent at **depth N** joining to a child at **depth N+1**:
+For a parent at **depth N** joining to a child at **depth N+1**, expand **N index conditions** — one per segment of the parent's `idx`:
 
 ```
 parent.ingestion_hash = child.ingestion_hash
-AND parent.idx = SPLIT(child.idx, '_')[0] || '_' || SPLIT(child.idx, '_')[1] || ... || SPLIT(child.idx, '_')[N]
+AND SPLIT(parent.idx, '_')[OFFSET(0)] = SPLIT(child.idx, '_')[OFFSET(0)]
+AND SPLIT(parent.idx, '_')[OFFSET(1)] = SPLIT(child.idx, '_')[OFFSET(1)]
+  ...
+AND SPLIT(parent.idx, '_')[OFFSET(N-1)] = SPLIT(child.idx, '_')[OFFSET(N-1)]
 ```
 
-Or more simply: **take the child's `idx`, split on `_`, and keep only the first N+1 segments.**
+The child always has one more segment than the parent — that final segment is the child's own position within the parent array.
 
 ### Table Naming Convention
 
