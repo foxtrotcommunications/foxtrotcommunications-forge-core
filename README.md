@@ -15,15 +15,15 @@ Forge Core is a deterministic BFS engine that reads a single JSON column (or mul
 
 | Warehouse  | Install Extra | Status |
 |------------|--------------|--------|
-| BigQuery   | `forge-core[bigquery]` | ✅ Production |
-| Snowflake  | `forge-core[snowflake]` | ✅ Production |
-| Databricks | `forge-core[databricks]` | ✅ Production |
-| Redshift   | `forge-core[redshift]` | 🚧 Beta |
+| BigQuery   | `foxtrotcommunications-forge-core[bigquery]` | ✅ Production |
+| Snowflake  | `foxtrotcommunications-forge-core[snowflake]` | ✅ Production |
+| Databricks | `foxtrotcommunications-forge-core[databricks]` | ✅ Production |
+| Redshift   | `foxtrotcommunications-forge-core[redshift]` | 🚧 Beta |
 
 ## Quickstart
 
 ```bash
-pip install forge-core[bigquery]
+pip install foxtrotcommunications-forge-core[bigquery]
 
 forge-core build \
   --source-type bigquery \
