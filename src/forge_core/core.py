@@ -136,7 +136,10 @@ def build_core(
     )
 
     # ===== INITIALIZE ADAPTER =====
-    adapter = get_adapter(source_type)
+    adapter_kwargs = {}
+    if source_type == "bigquery" and target_project:
+        adapter_kwargs["project"] = target_project
+    adapter = get_adapter(source_type, **adapter_kwargs)
     adapter._ensure_client()
 
     # Patch the global singleton so discovery/unnesting modules use this adapter

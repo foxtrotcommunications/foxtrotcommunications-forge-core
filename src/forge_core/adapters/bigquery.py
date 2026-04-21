@@ -14,9 +14,10 @@ class BigQueryAdapter(WarehouseAdapter):
     BigQuery implementation of the WarehouseAdapter.
     """
 
-    def __init__(self, key_path: str = None):
+    def __init__(self, key_path: str = None, project: str = None):
         self.client = None
         self.key_path = key_path
+        self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT")
         # Lazy init: Do not initialize client here to allow offline SQL generation
         # self._initialize_client()
 
@@ -33,7 +34,7 @@ class BigQueryAdapter(WarehouseAdapter):
                 )
             else:
                 # Use Application Default Credentials (gcloud auth, ADC, etc.)
-                self.client = bigquery.Client()
+                self.client = bigquery.Client(project=self.project)
 
             # Increase connection pool size to support 20+ parallel workers
             if hasattr(self.client, "_http") and self.client._http:
