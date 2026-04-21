@@ -1,5 +1,5 @@
 [project]
-name = "forge-core"
+name = "foxtrotcommunications-forge-core"
 version = "0.1.0"
 description = "Automatically decompose nested JSON in your data warehouse into normalized dbt models"
 readme = "README.md"
