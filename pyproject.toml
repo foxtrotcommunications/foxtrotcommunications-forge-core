@@ -1,0 +1,57 @@
+[project]
+name = "forge-core"
+version = "0.1.0"
+description = "Automatically decompose nested JSON in your data warehouse into normalized dbt models"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Foxtrot Communications"}
+]
+keywords = ["dbt", "json", "unnesting", "data-warehouse", "bigquery", "snowflake", "databricks", "redshift"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Database",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+]
+
+dependencies = [
+    "dbt-core>=1.7.0",
+    "pandas>=1.5.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+bigquery = ["dbt-bigquery>=1.7.0"]
+snowflake = ["dbt-snowflake>=1.7.0", "cryptography"]
+databricks = ["dbt-databricks>=1.7.0", "databricks-sdk>=0.18.0", "databricks-sql-connector"]
+redshift = ["dbt-redshift>=1.7.0"]
+all = ["forge-core[bigquery,snowflake,databricks,redshift]"]
+dev = ["pytest", "pytest-cov", "ruff", "mypy"]
+
+[project.scripts]
+forge-core = "forge_core.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/foxtrotcommunications/foxtrotcommunications-forge-core"
+Repository = "https://github.com/foxtrotcommunications/foxtrotcommunications-forge-core"
+Issues = "https://github.com/foxtrotcommunications/foxtrotcommunications-forge-core/issues"
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+forge_core = ["dbt_project/**/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

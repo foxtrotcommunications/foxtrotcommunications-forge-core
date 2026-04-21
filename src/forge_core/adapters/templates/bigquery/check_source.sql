@@ -1,0 +1,2 @@
+SELECT max(1)
+FROM ~TABLE_NAME~

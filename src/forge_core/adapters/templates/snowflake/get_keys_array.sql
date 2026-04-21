@@ -1,0 +1,4 @@
+SELECT ARRAY_AGG(DISTINCT key_flat.VALUE::STRING) AS "keys"
+FROM ~TABLE_NAME~,
+LATERAL FLATTEN(input => TRY_PARSE_JSON("~JSON_FIELD~")) array_flat,
+LATERAL FLATTEN(input => IFF(IS_OBJECT(array_flat.VALUE), OBJECT_KEYS(array_flat.VALUE), NULL)) key_flat
