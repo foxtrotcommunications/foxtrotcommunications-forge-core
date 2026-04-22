@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Test script for forge-core against BigQuery.
+Local test script for forge-core.
 
-Uses the same test data as the Forge SaaS test harness.
-Job profile '4j3JldUdOKe4O7B2gdWq' from forge-poc-452521.
+Runs a build_core() call against a real warehouse to verify end-to-end behavior.
+Requires credentials to be configured for your target warehouse before running.
 
-NOTE: Requires gcloud auth application-default login first.
+BigQuery example:
+    gcloud auth application-default login
+    python test_local.py --source-database my_dataset --source-table my_json_table --target-dataset test_output
 """
 import sys
 import os
@@ -24,41 +26,30 @@ logging.basicConfig(
 
 
 def main():
-    """
-    Run forge-core build against the test job profile.
-    
-    The Firestore job profile '4j3JldUdOKe4O7B2gdWq' maps to:
-      source_project = forge-poc-452521
-      source_database = (from Firestore)
-      source_table_name = (from Firestore)
-      target_dataset = (from Firestore)
-      target_project = forge-poc-452521
-
-    Provide these values as CLI args or environment variables.
-    """
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Test forge-core locally")
-    parser.add_argument("--source-project", default=os.environ.get("SOURCE_PROJECT", "forge-poc-452521"))
+    parser.add_argument("--source-type", default="bigquery", choices=["bigquery", "snowflake", "databricks", "redshift"])
+    parser.add_argument("--source-project", default=os.environ.get("SOURCE_PROJECT", "your-gcp-project"))
     parser.add_argument("--source-database", required=True)
     parser.add_argument("--source-table", required=True)
     parser.add_argument("--target-dataset", required=True)
     parser.add_argument("--target-project", default=None)
     parser.add_argument("--limit", type=int, default=100, help="Row limit for testing")
-    
+
     args = parser.parse_args()
-    
+
     target_project = args.target_project or args.source_project
-    
+
     print(f"\n{'='*60}")
     print(f" Forge Core Test Run")
     print(f" Source: {args.source_project}.{args.source_database}.{args.source_table}")
     print(f" Target: {target_project}.{args.target_dataset}")
     print(f" Limit:  {args.limit}")
     print(f"{'='*60}\n")
-    
+
     result = build_core(
-        source_type="bigquery",
+        source_type=args.source_type,
         source_project=args.source_project,
         source_database=args.source_database,
         source_table_name=args.source_table,
@@ -66,7 +57,7 @@ def main():
         target_project=target_project,
         limit=args.limit,
     )
-    
+
     print(f"\n{'='*60}")
     print(f" ✅ Build complete!")
     print(f"    Models: {result.total_models_created}")
