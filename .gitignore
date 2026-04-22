@@ -11,6 +11,7 @@ venv/
 .env
 *.log
 forge_project/
+future_features/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

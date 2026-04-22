@@ -28,7 +28,7 @@ bigquery = ["dbt-bigquery>=1.7.0"]
 snowflake = ["dbt-snowflake>=1.7.0", "cryptography"]
 databricks = ["dbt-databricks>=1.7.0", "databricks-sdk>=0.18.0", "databricks-sql-connector"]
 redshift = ["dbt-redshift>=1.7.0"]
-all = ["forge-core[bigquery,snowflake,databricks,redshift]"]
+all = ["foxtrotcommunications-forge-core[bigquery,snowflake,databricks,redshift]"]
 dev = ["pytest", "pytest-cov", "ruff", "mypy"]
 
 [project.scripts]
