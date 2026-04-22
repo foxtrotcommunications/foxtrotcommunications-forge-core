@@ -6,7 +6,22 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.1.0] — 2025-04-21
+## [0.1.1] — 2026-04-22
+
+### Fixed
+- README: replaced stale `forge-core[bigquery]` references in Supported Warehouses
+  table with the correct full package name `foxtrotcommunications-forge-core[bigquery]`
+
+### Added
+- Test suite (109 tests) covering `build_context`, `schema`, `json_schema`,
+  `schema_writer`, `profiles`, and adapter factory/ABC
+- GitHub Actions CI workflow (`ci.yml`) — runs pytest on Python 3.9 + 3.11
+- Coverage config in `pyproject.toml` — 60% threshold on pure-logic modules (77% actual)
+- Fixed `pyproject.toml` `[all]` extra that incorrectly referenced `forge-core`
+
+---
+
+## [0.1.0] — 2026-04-21
 
 ### Initial release
 
