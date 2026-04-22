@@ -1,6 +1,6 @@
 [project]
 name = "foxtrotcommunications-forge-core"
-version = "0.1.1"
+version = "0.1.2"
 description = "Automatically decompose nested JSON in your data warehouse into normalized dbt models"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -47,7 +47,10 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-forge_core = ["dbt_project/**/*"]
+forge_core = [
+    "dbt_project/**/*",
+    "adapters/templates/**/*",
+]
 
 [tool.ruff]
 line-length = 100

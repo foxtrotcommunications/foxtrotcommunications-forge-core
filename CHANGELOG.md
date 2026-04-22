@@ -6,6 +6,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.1.2] — 2026-04-22
+
+### Fixed
+- **Critical:** SQL template files (`adapters/templates/**/*.sql`) were missing from
+  the published wheel. Added `adapters/templates/**/*` to `[tool.setuptools.package-data]`.
+  All installs from v0.1.0 and v0.1.1 will hit `Template not found` errors at runtime —
+  upgrade to v0.1.2.
+
+---
+
 ## [0.1.1] — 2026-04-22
 
 ### Fixed
