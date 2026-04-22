@@ -50,6 +50,23 @@ print(f"Created {result.total_models_created} models")
 print(f"Processed {result.total_rows_processed} rows")
 ```
 
+### Enabling progress output
+
+Forge Core uses Python's standard `logging` module. By default nothing is printed — add this before your `build_core()` call to stream progress to the console:
+
+```python
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(message)s",
+    datefmt="%H:%M:%S",
+)
+logging.getLogger("forge_core").setLevel(logging.INFO)
+```
+
+This works in Jupyter notebooks, plain scripts, Airflow (routes through its own handler automatically), and any CI/CD environment that captures stdout.
+
 ## How It Works
 
 ```
