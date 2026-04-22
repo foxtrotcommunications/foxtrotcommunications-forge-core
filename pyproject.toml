@@ -55,3 +55,29 @@ target-version = "py39"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src/forge_core"]
+omit = [
+    # Warehouse adapter implementations — require live credentials (integration tests)
+    "src/forge_core/adapters/bigquery.py",
+    "src/forge_core/adapters/snowflake.py",
+    "src/forge_core/adapters/databricks.py",
+    "src/forge_core/adapters/redshift.py",
+    "src/forge_core/adapters/templates/*",
+    # CLI entry point — requires full runtime
+    "src/forge_core/cli.py",
+    # Orchestration layer — requires dbt + warehouse (integration tests)
+    "src/forge_core/core.py",
+    "src/forge_core/engine/dbt_runner.py",
+    "src/forge_core/engine/discovery.py",
+    "src/forge_core/engine/model_generator.py",
+    "src/forge_core/engine/root_processor.py",
+]
+
+[tool.coverage.report]
+fail_under = 60
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]

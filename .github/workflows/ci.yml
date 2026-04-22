@@ -27,4 +27,4 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest tests/ -v --tb=short --cov=forge_core --cov-report=term-missing --cov-fail-under=60
+          pytest tests/ -v --tb=short --cov=forge_core --cov-report=term-missing
