@@ -88,9 +88,9 @@ DECOMPOSE(J):
 
 **Definition 7** *(Index function).* For each row $r$ in model $M$ at depth $d$, the index is a positional path from root to the current element:
 
-$$\text{idx}(r) = i_0 \mathbin{\text{\textunderscore}} i_1 \mathbin{\text{\textunderscore}} \cdots \mathbin{\text{\textunderscore}} i_d$$
+$$\text{idx}(r) \;=\; i_0 \cdot i_1 \cdot \;\cdots\; \cdot i_d$$
 
-where $i_j$ is the positional index at nesting level $j$.
+where $i_j$ is the positional index at nesting level $j$, and $\cdot$ represents the underscore delimiter (e.g., `3_7_2`).
 
 > **Example:** `idx = "3_7_2"` means the 3rd root record → 7th child element → 2nd grandchild element.
 
@@ -131,7 +131,7 @@ By structural induction on $D(J)$.
 The input has no nested fields.
 - `GET_KEYS(J)` returns a fixed set $K$, determined entirely by the data in $J$.
 - `GET_TYPES(J, K)` maps each $k \in K$ to `SCALAR`, determined by the values in $J$.
-- One model is produced: cols $= K \cup \lbrace\text{ingestion\_hash},\;\text{idx}\rbrace$.
+- One model is produced with columns $K \cup \lbrace h, \; \text{idx}\rbrace$ where $h$ = `ingestion_hash`.
 
 This is a pure function of $J$. $\square$
 
@@ -236,7 +236,7 @@ $$\bigl\lvert\lbrace r_c \in M_{n_i} : \text{Join}(r_p,\, r_c) \rbrace\bigr\rver
 **3c. ARRAY field preservation.**
 For an `ARRAY` child $n_i$, the child model contains one row per array element:
 
-$$\text{idx}(r_c) = \text{idx}(r_p) \mathbin{\text{\textunderscore}} j \qquad \text{where } j \text{ is the 1-indexed array position}$$
+$$\text{idx}(r_c) \;=\; \text{idx}(r_p) \cdot j \qquad \text{where } j \text{ is the 1-indexed array position}$$
 
 We verify three properties:
 
