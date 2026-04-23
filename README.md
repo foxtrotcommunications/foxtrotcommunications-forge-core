@@ -18,7 +18,6 @@ Forge Core is a deterministic BFS engine that reads a single JSON column (or mul
 | BigQuery   | `foxtrotcommunications-forge-core[bigquery]` | ✅ Production |
 | Snowflake  | `foxtrotcommunications-forge-core[snowflake]` | ✅ Production |
 | Databricks | `foxtrotcommunications-forge-core[databricks]` | ✅ Production |
-| Redshift   | `foxtrotcommunications-forge-core[redshift]` | 🚧 Beta |
 
 ## Quickstart
 
