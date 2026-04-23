@@ -88,7 +88,7 @@ DECOMPOSE(J):
 
 **Definition 7** *(Index function).* For each row $r$ in model $M$ at depth $d$, the index is a positional path from root to the current element:
 
-$$\texttt{idx}(r) \;=\; i_0\_i_1\_\cdots\_i_d$$
+$$\text{idx}(r) = i_0 \mathbin{\text{\textunderscore}} i_1 \mathbin{\text{\textunderscore}} \cdots \mathbin{\text{\textunderscore}} i_d$$
 
 where $i_j$ is the positional index at nesting level $j$.
 
@@ -96,7 +96,7 @@ where $i_j$ is the positional index at nesting level $j$.
 
 **Definition 8** *(Join predicate).* For parent model $M_p$ at depth $d_p$ and child model $M_c$ at depth $d_c = d_p + 1$:
 
-$$\texttt{JOIN}(r_p, r_c) \;\iff\; r_p.\texttt{hash} = r_c.\texttt{hash} \;\;\wedge\;\; \bigwedge_{j=0}^{d_p} \texttt{SPLIT}(r_p.\texttt{idx},\, j) \;=\; \texttt{SPLIT}(r_c.\texttt{idx},\, j)$$
+$$\text{Join}(r_p,\, r_c) \;\iff\; r_p.\text{hash} = r_c.\text{hash} \;\wedge\; \bigwedge_{j=0}^{d_p} \text{Split}(r_p.\text{idx},\, j) = \text{Split}(r_c.\text{idx},\, j)$$
 
 ---
 
@@ -131,7 +131,7 @@ By structural induction on $D(J)$.
 The input has no nested fields.
 - `GET_KEYS(J)` returns a fixed set $K$, determined entirely by the data in $J$.
 - `GET_TYPES(J, K)` maps each $k \in K$ to `SCALAR`, determined by the values in $J$.
-- One model is produced: $\textit{cols} = K \cup \lbrace\texttt{ingestion\_hash},\,\texttt{idx}\rbrace$.
+- One model is produced: cols $= K \cup \lbrace\text{ingestion\_hash},\;\text{idx}\rbrace$.
 
 This is a pure function of $J$. $\square$
 
@@ -141,13 +141,13 @@ This is a pure function of $J$. $\square$
 
 **Step 1 — Key discovery is deterministic:**
 
-$$\forall\, J,\, J' \in \mathcal{J} :\; J = J' \;\implies\; \texttt{GET\_KEYS}(J) = \texttt{GET\_KEYS}(J')$$
+$$\forall\; J, J' \in \mathcal{J} : \quad J = J' \implies \text{GetKeys}(J) = \text{GetKeys}(J')$$
 
 `GET_KEYS` queries all rows (not a sample) and returns the union of all keys, sorted lexicographically. The sort establishes a canonical ordering.
 
 **Step 2 — Type inference is deterministic:**
 
-$$\forall\, k \in K :\quad \tau(k) = \begin{cases} \texttt{ARRAY} & \text{if } \exists\, r \in J : \texttt{is\_array}(r.k) \\[4pt] \texttt{STRUCT} & \text{if } \exists\, r \in J : \texttt{is\_object}(r.k) \;\wedge\; \neg\texttt{is\_array}(r.k) \\[4pt] \texttt{SCALAR} & \text{otherwise} \end{cases}$$
+$$\forall\; k \in K : \quad \tau(k) = \begin{cases} \textsf{ARRAY} & \text{if } \exists\, r \in J : \text{isArray}(r.k) \\[6pt] \textsf{STRUCT} & \text{if } \exists\, r \in J : \text{isObject}(r.k) \wedge \neg\text{isArray}(r.k) \\[6pt] \textsf{SCALAR} & \text{otherwise} \end{cases}$$
 
 This is a pure function of $J$.
 
@@ -155,7 +155,9 @@ This is a pure function of $J$.
 
 **Step 4 — Naming is deterministic:**
 
-$$\textit{name}(\textit{path},\,\textit{field}) \;=\; \textit{path}\;\texttt{\_\_}\;\texttt{ABBREV}(\textit{field})\;\texttt{+}\;\textit{counter}$$
+$$\text{name}(\textit{path},\;\textit{field}) = \textit{path} \;\|\; \text{Abbrev}(\textit{field}) \;\|\; \textit{counter}$$
+
+where $\|$ denotes string concatenation with the `__` delimiter.
 
 - `ABBREV` takes the first 4 characters — deterministic.
 - `counter` resolves collisions in sorted order — deterministic.
@@ -209,7 +211,7 @@ $$\lbrace M_{\text{root}} \rbrace \;\cup\; \bigcup_{i=1}^{b} \texttt{decompose}(
 
 **Rollup reconstructs:**
 
-$$\texttt{rollup}\bigl(\texttt{decompose}(J)\bigr) \;=\; \texttt{STRUCT}\Bigl(\, s_1,\;\ldots,\;s_a,\;\underbrace{\texttt{ARRAY\_AGG}\bigl(\texttt{rollup}(\texttt{decompose}(J.n_i))\bigr)}_{\text{for each } n_i \in N}\,\Bigr)$$
+$$\text{rollup}\bigl(\text{decompose}(J)\bigr) = \text{Struct}\!\left(s_1, \ldots, s_a,\; \underbrace{\text{ArrayAgg}\bigl(\text{rollup}(\text{decompose}(J.n_i))\bigr)}_{\text{for each } n_i \in N}\right)$$
 
 We verify three sub-properties:
 
@@ -218,14 +220,14 @@ We verify three sub-properties:
 **3a. Scalar preservation.**
 Each $s_i$ is stored as a typed column in $M_{\text{root}}$. BigQuery preserves full precision for `STRING`, `INT64`, `FLOAT64`, `BOOL`, `TIMESTAMP`:
 
-$$\forall\, s_i \in S :\; \texttt{rollup}(M_{\text{root}}).s_i \;=\; J.s_i \qquad\checkmark$$
+$$\forall\; s_i \in S : \quad \text{rollup}(M_{\text{root}}).s_i = J.s_i \qquad \checkmark$$
 
 ---
 
 **3b. STRUCT field preservation.**
 For a `STRUCT` child $n_i$, the child model contains exactly one row per parent row with matching `(hash, idx)`:
 
-$$\bigl\lvert\lbrace\, r_c \in M_{n_i} : \texttt{JOIN}(r_p, r_c) \,\rbrace\bigr\rvert \;=\; 1 \qquad\text{for STRUCT fields}$$
+$$\bigl\lvert\lbrace r_c \in M_{n_i} : \text{Join}(r_p,\, r_c) \rbrace\bigr\rvert = 1 \qquad \text{for Struct fields}$$
 
 `ANY_VALUE` returns that single row. By the inductive hypothesis, the child's internal structure is correctly reconstructed. $\checkmark$
 
@@ -234,13 +236,13 @@ $$\bigl\lvert\lbrace\, r_c \in M_{n_i} : \texttt{JOIN}(r_p, r_c) \,\rbrace\bigr\
 **3c. ARRAY field preservation.**
 For an `ARRAY` child $n_i$, the child model contains one row per array element:
 
-$$\texttt{idx}(r_c) \;=\; \texttt{idx}(r_p)\;\texttt{\_}\;j \qquad\text{where } j \text{ is the 1-indexed array position}$$
+$$\text{idx}(r_c) = \text{idx}(r_p) \mathbin{\text{\textunderscore}} j \qquad \text{where } j \text{ is the 1-indexed array position}$$
 
 We verify three properties:
 
 **(i) Completeness** — every element is captured:
 
-$$\forall\, j \in [1,\;\lvert J.n_i \rvert] :\; \exists\, r_c \in M_{n_i} :\; \texttt{SPLIT}(r_c.\texttt{idx},\; d_c) = j$$
+$$\forall\; j \in [1,\;\lvert J.n_i \rvert] : \; \exists\; r_c \in M_{n_i} : \; \text{Split}(r_c.\text{idx},\; d_c) = j$$
 
 Holds because `UNNEST`/`FLATTEN` generates exactly one row per element, with `ROW_NUMBER` assigning sequential positions.
 
@@ -252,7 +254,7 @@ Holds because `UNNEST` produces exactly one row per element.
 
 **(iii) Order preservation** — array order is maintained:
 
-$$\texttt{ARRAY\_AGG}(M_{n_i} \;\texttt{ORDER BY idx})[j] \;\cong\; J.n_i[j] \qquad \forall\, j$$
+$$\text{ArrayAgg}(M_{n_i},\; \text{order by idx})[j] \cong J.n_i[j] \qquad \forall\; j$$
 
 Holds because `ROW_NUMBER` assigns positions in insertion order, and `ARRAY_AGG` reconstructs in `idx` order.
 
@@ -260,7 +262,7 @@ Holds because `ROW_NUMBER` assigns positions in insertion order, and `ARRAY_AGG`
 
 Combining 3a + 3b + 3c:
 
-$$\texttt{rollup}\bigl(\texttt{decompose}(J)\bigr) \;\cong\; J \qquad\text{for } D(J) = n + 1. \qquad\blacksquare$$
+$$\text{rollup}\bigl(\text{decompose}(J)\bigr) \cong J \qquad \text{for } D(J) = n + 1. \qquad \blacksquare$$
 
 ---
 
@@ -302,7 +304,7 @@ The number of models is bounded by the number of internal (non-leaf) nodes plus 
 
 **Corollary 2** *(Join-key invertibility).* The index function is injective within a model:
 
-$$\forall\, M \in \texttt{decompose}(J),\;\;\forall\, r_1, r_2 \in M :\quad (\texttt{hash}(r_1),\;\texttt{idx}(r_1)) = (\texttt{hash}(r_2),\;\texttt{idx}(r_2)) \;\implies\; r_1 = r_2$$
+$$\forall\; M \in \text{decompose}(J),\;\; \forall\; r_1, r_2 \in M : \quad (\text{hash}(r_1),\; \text{idx}(r_1)) = (\text{hash}(r_2),\; \text{idx}(r_2)) \implies r_1 = r_2$$
 
 Follows from the `(ingestion_hash, idx)` unique-key constraint enforced by dbt incremental materialization.
 
@@ -310,7 +312,7 @@ Follows from the `(ingestion_hash, idx)` unique-key constraint enforced by dbt i
 
 **Corollary 3** *(Depth-aware join correctness).* For models $M_p$ at depth $d$ and $M_c$ at depth $d + 1$, the join predicate using `SPLIT(idx, '_')[OFFSET(0..d)]` correctly establishes the parent-child relationship:
 
-$$\forall\, r_c \in M_c :\; \exists!\, r_p \in M_p :\; \texttt{JOIN}(r_p, r_c)$$
+$$\forall\; r_c \in M_c : \; \exists!\; r_p \in M_p : \; \text{Join}(r_p,\, r_c)$$
 
 Every child row has exactly one parent.
 
@@ -318,7 +320,7 @@ Every child row has exactly one parent.
 
 **Corollary 4** *(Idempotence).*
 
-$$\texttt{decompose}(J_1) = \texttt{decompose}(J_2) \quad\text{whenever}\quad J_1 = J_2$$
+$$\text{decompose}(J_1) = \text{decompose}(J_2) \quad \text{whenever} \quad J_1 = J_2$$
 
 Follows directly from Theorem 1.
 
