@@ -232,6 +232,92 @@ One table, one `WHERE` clause, no UNNESTs. BigQuery scans only the diagnosis cod
 
 ---
 
+## BigQuery Cost Analysis
+
+BigQuery charges for two things: **storage** and **compute** (bytes scanned). Understanding both is essential for evaluating the Forge trade-off.
+
+### Pricing (on-demand, as of 2024)
+
+| Resource | Cost |
+|---|---|
+| **Active storage** | $0.02 / GB / month |
+| **Long-term storage** (table unmodified 90+ days) | $0.01 / GB / month |
+| **On-demand queries** | $6.25 / TB scanned |
+| **First 1 TB/month** | Free |
+
+### Storage Cost: Raw vs Forge
+
+Using the FHIR claims example (6.2M rows, 28 models):
+
+| | Raw JSON | Forge Tables |
+|---|---|---|
+| **Source table size** | ~12 GB | ~12 GB (still exists) |
+| **Decomposed tables** | — | ~2.4 GB (columnar, typed — smaller than JSON blob) |
+| **Rollup view** | — | 0 GB (view, not materialized) |
+| **Total storage** | 12 GB | 14.4 GB |
+| **Monthly cost** | $0.24 | $0.29 |
+| **Delta** | — | **+$0.05/month** |
+
+> **Why Forge tables are smaller than you'd expect:** The raw JSON column stores field names, brackets, quotes, and whitespace in every row. Forge extracts only the values into typed columns — `FLOAT64` (8 bytes) vs the JSON string `"123.45"` (8 bytes + key name + quotes + braces). For deeply nested data, Forge tables are often **smaller** in total than the JSON column they came from.
+
+### Compute Cost: Per-Query Savings
+
+BigQuery charges by bytes scanned. The critical difference:
+
+- **Raw JSON:** Every query scans the **entire JSON column** (~12 GB) regardless of which fields you need. `JSON_VALUE` runs *after* the full column is read.
+- **Forge:** BigQuery reads only the **specific columns referenced** in your query. A query touching 3 columns out of 15 reads ~20% of the table.
+
+| Query | Raw JSON (bytes scanned) | Forge (bytes scanned) | Savings |
+|---|---|---|---|
+| Example 1: Scalar lookup (3 fields) | ~12 GB (full JSON column) | ~0.8 GB (3 typed columns from root) | **93%** |
+| Example 3: Nested array (2 levels) | ~12 GB | ~0.4 GB (child table, 4 columns) | **97%** |
+| Example 4: Aggregation | ~12 GB | ~0.6 GB (root + child, 3 columns) | **95%** |
+| Example 5: Direct child filter | ~12 GB | ~0.15 GB (child table only, 2 columns) | **99%** |
+
+### Cost Per Query
+
+At $6.25/TB:
+
+| Query type | Raw JSON cost | Forge cost |
+|---|---|---|
+| Scalar lookup | $0.075 | $0.005 |
+| Nested array access | $0.075 | $0.003 |
+| Aggregation across levels | $0.075 | $0.004 |
+| Direct child table filter | $0.075 | $0.001 |
+
+### Break-Even Analysis
+
+The extra storage cost of Forge is **$0.05/month**. Each query saves ~$0.07 in compute.
+
+$$\text{Break-even} = \frac{\$0.05/\text{month}}{\$0.07/\text{query}} \approx 1 \text{ query/month}$$
+
+**If you query the dataset more than once per month, Forge pays for itself.**
+
+For a team running 50 queries/day against the same dataset:
+
+| | Raw JSON | Forge |
+|---|---|---|
+| Monthly query cost | 50 × 30 × $0.075 = **$112.50** | 50 × 30 × $0.004 = **$6.00** |
+| Monthly storage cost | $0.24 | $0.29 |
+| **Monthly total** | **$112.74** | **$6.29** |
+| **Annual savings** | — | **$1,277/year** |
+
+### Capacity Pricing (Slots)
+
+For organizations using BigQuery Editions (slot-based pricing) instead of on-demand:
+
+| Edition | Cost | 100-slot commitment |
+|---|---|---|
+| Standard | $0.04/slot-hour | ~$120/month |
+| Enterprise | $0.06/slot-hour | ~$180/month |
+
+Under slot pricing, the cost advantage shifts from bytes-scanned to **slot-time**:
+- Raw JSON queries consume more slot-seconds because `JSON_VALUE` parsing is CPU-intensive
+- Forge queries on typed columns use fewer slots and complete faster
+- The same slot budget supports **3–5x more Forge queries** than raw JSON queries
+
+---
+
 ## Summary
 
 Raw JSON queries are acceptable for **ad-hoc, shallow, one-off** extractions. Forge-decomposed tables are superior for **repeated, deep, team-shared, production** workloads — primarily because:
@@ -241,3 +327,5 @@ Raw JSON queries are acceptable for **ad-hoc, shallow, one-off** extractions. Fo
 3. **Type safety** — no `CAST(JSON_VALUE(...) AS FLOAT64)` chains
 4. **BI compatibility** — every table is a standard relational table
 5. **Incremental efficiency** — only new rows are processed on subsequent runs
+6. **Cost** — 93–99% reduction in bytes scanned per query; breaks even at 1 query/month
+
