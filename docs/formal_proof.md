@@ -45,6 +45,21 @@ $$D(J) = \max\bigl\lbrace\, d(v) : v \in V(T(J)) \,\bigr\rbrace$$
 
 By Axiom 1, $D(J) < \infty$ for all $J$.
 
+**Axiom 3** *(Type consistency).* For each field $k$ at a given path in the tree, all rows agree on the structural type of $k$:
+
+$$\forall\; r_1, r_2 \in J : \quad \tau(r_1.k) = \tau(r_2.k)$$
+
+> **Note:** When this axiom is violated (a field is scalar in some rows and object/array in others), Forge's type-promotion rule ($\textsf{ARRAY} > \textsf{STRUCT} > \textsf{SCALAR}$) is still deterministic (Theorem 1 holds), but scalar values in rows where the field is not of the promoted type are **coerced to NULL**. Theorem 2 (losslessness) requires this axiom.
+
+**Definition 5a** *(Structural isomorphism).* Two JSON values $J_1 \cong J_2$ iff there exists a bijection $\phi : V(T(J_1)) \to V(T(J_2))$ such that:
+
+1. $\phi$ preserves the root: $\phi(\text{root}_1) = \text{root}_2$
+2. $\phi$ preserves edges: $(u, v) \in E_1 \iff (\phi(u), \phi(v)) \in E_2$
+3. $\phi$ preserves labels: $\lambda_1(v) = \lambda_2(\phi(v))$ for all $v$
+4. $\phi$ preserves types: $\tau_1(v) = \tau_2(\phi(v))$ for all $v$
+5. $\phi$ preserves scalar values: if $\tau(v) = \textsf{SCALAR}$, then $\text{val}_1(v) = \text{val}_2(\phi(v))$
+6. $\phi$ preserves child ordering: for all $v$, the sequence of children of $v$ in $T_1$ maps to the same-ordered sequence in $T_2$
+
 ---
 
 ### 1.2 The Decomposition Function
@@ -90,7 +105,19 @@ DECOMPOSE(J):
 
 $$\text{idx}(r) \;=\; i_0 \cdot i_1 \cdot \;\cdots\; \cdot i_d$$
 
-where $i_j$ is the positional index at nesting level $j$, and $\cdot$ represents the underscore delimiter (e.g., `3_7_2`).
+where $i_j$ is the positional index at nesting level $j$, and $\cdot$ represents the underscore delimiter (e.g., `3_7_2`). Each $i_j \in \mathbb{N}^+$ is assigned by `ROW_NUMBER() OVER (ORDER BY insertion)` at level $j$.
+
+**Axiom 4** *(UNNEST semantics).* The `UNNEST` operator on an array of length $m$ produces exactly $m$ rows, one per element, in insertion order. Formally, for array $A = [a_1, \ldots, a_m]$:
+
+$$\text{UNNEST}(A) = \lbrace (a_j, j) : j \in [1, m] \rbrace \quad \text{and} \quad \lvert\text{UNNEST}(A)\rvert = m$$
+
+**Axiom 5** *(Column storage fidelity).* For supported types $T \in \lbrace\textsf{STRING}, \textsf{INT64}, \textsf{FLOAT64}, \textsf{BOOL}, \textsf{TIMESTAMP}\rbrace$, storing value $v$ of type $T$ in a BigQuery column and reading it back yields $v$.
+
+**Lemma 1** *(idx injectivity).* Within any model $M$ at depth $d$, the composite key $(h, \text{idx})$ is injective:
+
+$$\forall\; r_1, r_2 \in M : \quad (h(r_1), \text{idx}(r_1)) = (h(r_2), \text{idx}(r_2)) \implies r_1 = r_2$$
+
+*Proof.* The idx is constructed as $i_0 \cdot i_1 \cdot \ldots \cdot i_d$ where each $i_j$ is a `ROW_NUMBER` — a sequential integer unique within its parent partition. Two rows in $M$ share the same hash $h$ only if they originate from the same source document. Within that document, the tuple $(i_0, i_1, \ldots, i_d)$ is unique because at each level $j$, `ROW_NUMBER` assigns distinct integers to siblings. Since the delimiter $\cdot$ separates integer components and each $i_j \geq 1$, the string representation is injective (no ambiguity: `SPLIT` recovers the original tuple). $\square$
 
 > **Example:** `idx = "3_7_2"` means the 3rd root record → 7th child element → 2nd grandchild element.
 
@@ -181,11 +208,11 @@ where $\|$ denotes string concatenation with the `__` delimiter.
 
 ## 3. Theorem 2: Correctness (Losslessness)
 
-> **Theorem.** $\;\forall\, J \in \mathcal{J}:$
+> **Theorem.** For all type-consistent $J \in \mathcal{J}$ (satisfying Axiom 3):
 >
-> $$\texttt{rollup}\bigl(\texttt{decompose}(J)\bigr) \;\cong\; J$$
+> $$\text{rollup}\bigl(\text{decompose}(J)\bigr) \;\cong\; J$$
 >
-> where $\cong$ denotes structural isomorphism (same tree shape, same values, same field names, same array ordering).
+> where $\cong$ is structural isomorphism (Definition 5a).
 
 ### Proof
 
@@ -218,18 +245,20 @@ We verify three sub-properties:
 ---
 
 **3a. Scalar preservation.**
-Each $s_i$ is stored as a typed column in $M_{\text{root}}$. BigQuery preserves full precision for `STRING`, `INT64`, `FLOAT64`, `BOOL`, `TIMESTAMP`:
+Each $s_i$ is stored as a typed column in $M_{\text{root}}$. By Axiom 3 (type consistency), $s_i$ is scalar in all rows, so no type coercion occurs. By Axiom 5 (column storage fidelity), storing and reading back preserves the value:
 
 $$\forall\; s_i \in S : \quad \text{rollup}(M_{\text{root}}).s_i = J.s_i \qquad \checkmark$$
 
 ---
 
 **3b. STRUCT field preservation.**
-For a `STRUCT` child $n_i$, the child model contains exactly one row per parent row with matching `(hash, idx)`:
+For a `STRUCT` child $n_i$, we must show exactly one child row matches each parent.
 
-$$\bigl\lvert\lbrace r_c \in M_{n_i} : \text{Join}(r_p,\, r_c) \rbrace\bigr\rvert = 1 \qquad \text{for Struct fields}$$
+*Proof of unit cardinality.* When $\tau(n_i) = \textsf{STRUCT}$ (by Axiom 3, in all rows), the decomposition does not apply `UNNEST` — it extracts the struct fields directly. Each parent row $r_p$ produces exactly one child row $r_c$ with $\text{idx}(r_c) = \text{idx}(r_p)$ (same depth, no additional position appended). Therefore:
 
-`ANY_VALUE` returns that single row. By the inductive hypothesis, the child's internal structure is correctly reconstructed. $\checkmark$
+$$\bigl\lvert\lbrace r_c \in M_{n_i} : \text{Join}(r_p, r_c) \rbrace\bigr\rvert = 1$$
+
+`ANY_VALUE` returns this unique row. By the inductive hypothesis, the child's internal structure is correctly reconstructed. $\checkmark$
 
 ---
 
@@ -244,19 +273,19 @@ We verify three properties:
 
 $$\forall\; j \in [1,\;\lvert J.n_i \rvert] : \; \exists\; r_c \in M_{n_i} : \; \text{Split}(r_c.\text{idx},\; d_c) = j$$
 
-Holds because `UNNEST`/`FLATTEN` generates exactly one row per element, with `ROW_NUMBER` assigning sequential positions.
+*Proof.* By Axiom 4, `UNNEST` on array $J.n_i$ of length $m$ produces exactly $m$ pairs $(a_j, j)$. The decomposition assigns $\text{idx}(r_c) = \text{idx}(r_p) \cdot j$ for each. Since $j$ ranges over $[1, m]$, every element has a corresponding row. $\square$
 
 **(ii) No spurious elements** — no extra rows introduced:
 
 $$\lvert M_{n_i} \rvert \;=\; \sum_{r_p \,\in\, M_{\text{parent}}} \lvert J_{r_p}.n_i \rvert$$
 
-Holds because `UNNEST` produces exactly one row per element.
+*Proof.* By Axiom 4, $\lvert\text{UNNEST}(A)\rvert = \lvert A \rvert$. The decomposition applies UNNEST independently per parent row. Summing: total child rows = sum of array lengths across parents. No rows are added by any other operation. $\square$
 
 **(iii) Order preservation** — array order is maintained:
 
 $$\text{ArrayAgg}(M_{n_i},\; \text{order by idx})[j] \cong J.n_i[j] \qquad \forall\; j$$
 
-Holds because `ROW_NUMBER` assigns positions in insertion order, and `ARRAY_AGG` reconstructs in `idx` order.
+*Proof.* `ROW_NUMBER` assigns position $j$ to the $j$-th element of `UNNEST` output (Axiom 4 guarantees insertion order). `ARRAY_AGG ... ORDER BY idx` reconstructs elements in ascending idx order. Since idx encodes position $j$ in its final component, ordering by idx recovers the original array order. By the inductive hypothesis, each element's value is correctly reconstructed. $\square$
 
 ---
 
@@ -302,19 +331,15 @@ The number of models is bounded by the number of internal (non-leaf) nodes plus 
 
 ## 5. Corollaries
 
-**Corollary 2** *(Join-key invertibility).* The index function is injective within a model:
-
-$$\forall\; M \in \text{decompose}(J),\;\; \forall\; r_1, r_2 \in M : \quad (\text{hash}(r_1),\; \text{idx}(r_1)) = (\text{hash}(r_2),\; \text{idx}(r_2)) \implies r_1 = r_2$$
-
-Follows from the `(ingestion_hash, idx)` unique-key constraint enforced by dbt incremental materialization.
+**Corollary 2** *(Join-key invertibility).* Follows directly from Lemma 1 (idx injectivity, proved above).
 
 ---
 
-**Corollary 3** *(Depth-aware join correctness).* For models $M_p$ at depth $d$ and $M_c$ at depth $d + 1$, the join predicate using `SPLIT(idx, '_')[OFFSET(0..d)]` correctly establishes the parent-child relationship:
+**Corollary 3** *(Depth-aware join correctness).* For models $M_p$ at depth $d$ and $M_c$ at depth $d + 1$:
 
 $$\forall\; r_c \in M_c : \; \exists!\; r_p \in M_p : \; \text{Join}(r_p,\, r_c)$$
 
-Every child row has exactly one parent.
+*Proof.* Let $r_c$ have $\text{idx}(r_c) = i_0 \cdot i_1 \cdot \ldots \cdot i_d \cdot i_{d+1}$. The join predicate matches on the first $d+1$ components: $(h, i_0, \ldots, i_d)$. This is exactly the $(h, \text{idx})$ key of some row in $M_p$ (since $r_c$ was produced by unnesting a value within that parent row). By Lemma 1, this key identifies a unique $r_p \in M_p$. Existence holds because every child row was produced from some parent. Uniqueness holds by Lemma 1. $\square$
 
 ---
 
@@ -333,7 +358,7 @@ The proof relies on the following assumptions:
 | # | Assumption | Why It Holds in Forge |
 |:---|:---|:---|
 | 1 | `GET_KEYS` is total — queries all rows, not a sample | Forge runs `GET_KEYS` against the full table |
-| 2 | Type stability — a field has a consistent type across rows | `GET_TYPES` uses the most complex type present (`ARRAY` > `STRUCT` > `SCALAR`) |
+| 2 | Type consistency (Axiom 3) — a field has the same structural type in all rows | When violated, Forge promotes to the most complex type; scalar values in non-matching rows are coerced to NULL (losslessness does not hold for those values) |
 | 3 | Finite nesting — documents have finite depth | Guaranteed by JSON specification and any real data source |
 | 4 | Lossless column storage — warehouse preserves value precision | True for `STRING`, `INT64`, `FLOAT64`, `BOOL`, `TIMESTAMP` in BigQuery |
 | 5 | `ARRAY_AGG` ordering — rollup preserves array order | Forge uses `idx`-based ordering, deterministic by construction |
