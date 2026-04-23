@@ -37,7 +37,9 @@ The BFS processes exactly $D$ levels. At each level, two operations run per fiel
 | Operation | Cost | Invocations per level |
 |:---|:---|:---|
 | `GET_KEYS` | One SQL query scanning the parent table | Once per parent model at that level |
-| `GET_TYPES` | One SQL query per key (batched in groups of 50) | $\lceil K / 50 \rceil$ queries per parent model |
+| `GET_TYPES` | One SQL query per key (batched in groups of 50 via `UNION DISTINCT`) | $\lceil K / 50 \rceil$ queries per parent model |
+
+> **Note:** The batch size of 50 is a hardcoded implementation constant in `discovery.py` (`sub_object_count`), chosen to stay within BigQuery's query-length limits for `UNION DISTINCT` chains. It is not a BigQuery API limit.
 
 **Total schema discovery queries:**
 
@@ -66,15 +68,21 @@ At each BFS level, Forge runs one `dbt build` command that materializes all mode
 
 **Total rows materialized across all models:**
 
-$$R = N + \sum_{d=1}^{D} \sum_{j=1}^{m_d} N \cdot \prod_{l=1}^{d} A_l$$
+At depth $d$, each model's rows are derived from its parent at depth $d - 1$ by unnesting arrays of average length $A_d$. The row count at depth $d$ is:
 
-where $A_l$ is the average array length at depth $l$.
+$$R_d = R_{d-1} \cdot A_d \qquad R_0 = N$$
+
+Summing across all levels:
+
+$$R = \sum_{d=0}^{D} R_d = N + N \cdot A_1 + N \cdot A_1 \cdot A_2 + \cdots = N \cdot \sum_{d=0}^{D} \prod_{l=1}^{d} A_l$$
 
 **Worst case** (all arrays, uniform length $A$):
 
-$$\boxed{R = N \cdot \frac{A^{D+1} - 1}{A - 1} = O(N \cdot A^D)}$$
+$$\boxed{R = N \cdot \frac{A^{D+1} - 1}{A - 1}}$$
 
-**Typical case (FHIR):** $N = 1000$, $A \approx 3$, $D = 4$ → $R \approx 121{,}000$ total rows.
+The $O(N \cdot A^D)$ term is the **deepest-level contribution** only. The geometric sum above is the exact total across all levels. For $A \geq 2$, the deepest level dominates, so $R = \Theta(N \cdot A^D)$.
+
+**Typical case (FHIR):** $N = 1000$, $A \approx 3$, $D = 4$ → $R = 1000 \cdot \frac{3^5 - 1}{2} = 121{,}000$ total rows.
 
 ---
 
@@ -92,11 +100,15 @@ This is a critical optimization. Without level-batching, it would be $M$ invocat
 
 Within each BFS level, schema discovery tasks run in parallel with `max_workers=20`. The wall-clock time for level $d$ is:
 
-$$T_d = \left\lceil \frac{m_d}{20} \right\rceil \cdot t_{\text{query}}$$
+$$T_d = \underbrace{\left\lceil \frac{m_d}{20} \right\rceil \cdot t_{\text{query}}}_{\text{discovery}} + \underbrace{T_{\text{dbt}}(R_d)}_{\text{materialization}}$$
 
-where $t_{\text{query}}$ is the average discovery query latency. Total wall-clock:
+where $t_{\text{query}}$ is the average discovery query latency and $T_{\text{dbt}}(R_d)$ is the dbt build time for materializing $R_d$ rows at level $d$. The dbt time scales with data volume: $T_{\text{dbt}}(R_d) = O(R_d) = O(N \cdot A^d)$.
 
-$$\boxed{T_{\text{wall}} = \sum_{d=0}^{D} \left(\left\lceil \frac{m_d}{20} \right\rceil \cdot t_{\text{query}} + t_{\text{dbt}}(d)\right)}$$
+Total wall-clock:
+
+$$\boxed{T_{\text{wall}} = \sum_{d=0}^{D} \left(\left\lceil \frac{m_d}{20} \right\rceil \cdot t_{\text{query}} + T_{\text{dbt}}(N \cdot A^d)\right)}$$
+
+The dbt term dominates at deeper levels since $R_d$ grows exponentially.
 
 ---
 
@@ -104,11 +116,16 @@ $$\boxed{T_{\text{wall}} = \sum_{d=0}^{D} \left(\left\lceil \frac{m_d}{20} \righ
 
 | Phase | Complexity | Dominant cost |
 |:---|:---|:---|
-| Schema discovery | $O(M \cdot K / 50)$ | SQL queries to warehouse |
+| Schema discovery | $O(B^D \cdot K / 50)$ | SQL queries to warehouse |
 | Materialization | $O(N \cdot A^D)$ total rows | Warehouse write throughput |
 | dbt orchestration | $O(D)$ invocations | dbt startup overhead |
-| Rollup generation | $O(M)$ | One SQL file per model |
-| **Total** | **$O(N \cdot A^D + M \cdot K)$** | **Materialization dominates** |
+| Rollup generation | $O(M) = O(B^D)$ | One SQL file per model |
+| **Total** | $O(N \cdot A^D + B^D \cdot K)$ | **Two independent exponentials** |
+
+> **Note on dominance:** The two exponential terms have different bases ($A$ for materialization, $B$ for schema discovery) and different linear factors ($N$ vs. $K$). Which dominates depends on the data shape:
+> - **Large arrays, sparse branching** ($A \gg B$): materialization dominates.
+> - **Dense branching, small arrays** ($B \gg A$): schema discovery dominates.
+> - **Typical FHIR data** ($A \approx 3$, $B \approx 5$, $N \gg K$): materialization dominates.
 
 ---
 
@@ -142,17 +159,20 @@ $$\boxed{\text{Storage} = O(R \cdot S_{\text{avg}} \cdot \bar{s}) = O(N \cdot A^
 
 ### 3.2 idx Column Overhead
 
-The `idx` column stores a string of length proportional to the depth:
+The `idx` column stores a string of length proportional to the depth. The positional index at each level is bounded differently:
 
-$$\lvert\text{idx}\rvert = \sum_{j=0}^{d} \lfloor\log_{10}(i_j)\rfloor + d$$
+- **Level 0 (root):** bounded by $N$ (number of source records)
+- **Level $j > 0$:** bounded by $A_j$ (array length at that level)
 
-where $d$ is the model depth and $i_j$ are positional indices. The $d$ term accounts for underscore delimiters.
+$$\lvert\text{idx}\rvert = \underbrace{(\lfloor\log_{10}(N)\rfloor + 1)}_{\text{root component}} + \sum_{j=1}^{d} \underbrace{(\lfloor\log_{10}(A_j)\rfloor + 1)}_{\text{level } j \text{ component}} + d$$
 
-**Worst case** (large arrays, deep nesting):
+where the $d$ term accounts for underscore delimiters.
 
-$$\boxed{\lvert\text{idx}\rvert_{\max} = D \cdot (\lfloor\log_{10}(N \cdot A^D)\rfloor + 1) + D}$$
+**Worst case** (uniform array length $A$):
 
-For $D = 4$, $N = 10{,}000$, $A = 10$: idx ≈ `"10000_10_10_10_10"` = 19 bytes. Negligible.
+$$\boxed{\lvert\text{idx}\rvert_{\max} = (\lfloor\log_{10}(N)\rfloor + 1) + D \cdot (\lfloor\log_{10}(A)\rfloor + 1) + D}$$
+
+For $D = 4$, $N = 10{,}000$, $A = 10$: idx = `"10000_10_10_10_10"` = 19 bytes. This is less than 0.1% of a typical row's storage.
 
 ---
 
@@ -191,7 +211,7 @@ Forge generates SQL model files on disk:
 
 $$\boxed{\text{Disk} = O(M \cdot K) \text{ bytes}}$$
 
-For $M = 100$, $K = 20$: ~200 KB. Negligible.
+For $M = 100$, $K = 20$: ~200 KB — less than 0.01% of warehouse storage for any non-trivial dataset.
 
 ---
 
@@ -208,7 +228,7 @@ $$\boxed{\text{Memory} = O(M \cdot K + B^D)}$$
 
 Since $M = O(B^D)$, this simplifies to $O(B^D \cdot K)$.
 
-For $D = 4$, $B = 5$, $K = 20$: ~780 × 20 = 15,600 metadata entries. ~1 MB. Negligible.
+For $D = 4$, $B = 5$, $K = 20$: ~780 × 20 = 15,600 metadata entries — approximately 1 MB, which is under 0.1% of typical system memory.
 
 ---
 
@@ -226,9 +246,11 @@ $$\text{Join cost} = O(R_{\text{parent}} + R_{\text{child}})$$
 
 **Total rollup cost:**
 
-$$\boxed{T_{\text{rollup}} = O(R) = O(N \cdot A^D)}$$
+$$\boxed{T_{\text{rollup}} = O(R) = O\!\left(N \cdot \frac{A^{D+1} - 1}{A - 1}\right)}$$
 
-This is the same order as materialization — the rollup reads each row once.
+Each row is read once across the CTE cascade.
+
+> **Caveat:** BigQuery may not cache intermediate CTEs. In the worst case, a CTE referenced by multiple downstream CTEs could be re-evaluated, multiplying the constant factor. In Forge's rollup structure, each CTE is referenced exactly once by its parent, so re-evaluation does not occur — the cost is a single pass over $R$.
 
 ---
 
@@ -246,7 +268,7 @@ For a JSON source with $N$ rows, max depth $D$, max keys $K$, branching factor $
 | **Storage amplification** | $(A^{D+1} - 1) / (A - 1)$ | 10–50x |
 | **Local disk** | $O(B^D \cdot K)$ bytes | ~200 KB |
 | **Python memory** | $O(B^D \cdot K)$ | ~1 MB |
-| **Wall-clock time** | $O(D \cdot (t_q + t_{\text{dbt}}))$ | 2–10 minutes |
+| **Wall-clock time** | $\sum_d T_{\text{dbt}}(N \cdot A^d)$ | 2–10 minutes |
 
 ---
 
