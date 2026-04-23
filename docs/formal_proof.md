@@ -160,7 +160,7 @@ The input has no nested fields.
 - `GET_TYPES(J, K)` maps each $k \in K$ to `SCALAR`, determined by the values in $J$.
 - One model is produced with columns $K \cup \lbrace h, \; \text{idx}\rbrace$ where $h$ = `ingestion_hash`.
 
-This is a pure function of $J$. $\square$
+This is a pure function of $J$. $\blacksquare$
 
 ---
 
@@ -174,7 +174,7 @@ $$\forall\; J, J' \in \mathcal{J} : \quad J = J' \implies \text{GetKeys}(J) = \t
 
 **Step 2 — Type inference is deterministic:**
 
-$$\forall\; k \in K : \quad \tau(k) = \begin{cases} \textsf{ARRAY} & \text{if } \exists\, r \in J : \text{isArray}(r.k) \\[6pt] \textsf{STRUCT} & \text{if } \exists\, r \in J : \text{isObject}(r.k) \wedge \neg\text{isArray}(r.k) \\[6pt] \textsf{SCALAR} & \text{otherwise} \end{cases}$$
+$$\forall\; k \in K : \quad \tau(k) = \begin{cases} \textsf{ARRAY} & \text{if } \exists\, r \in J : \text{isArray}(r.k) \\\\ \textsf{STRUCT} & \text{if } \exists\, r \in J : \text{isObject}(r.k) \wedge \neg\text{isArray}(r.k) \\\\ \textsf{SCALAR} & \text{otherwise} \end{cases}$$
 
 This is a pure function of $J$.
 
@@ -224,7 +224,7 @@ By induction on $D(J)$.
 
 $J$ contains only scalar fields. `decompose` produces one model $M_{\text{root}}$ with one column per scalar field plus metadata. `rollup` wraps these back into a `STRUCT`, excluding metadata:
 
-$$\texttt{rollup}(\lbrace M_{\text{root}} \rbrace) \;\cong\; J \qquad\square$$
+$$\text{rollup}(\lbrace M_{\text{root}} \rbrace) \;\cong\; J \qquad\blacksquare$$
 
 ---
 
