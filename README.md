@@ -151,6 +151,41 @@ def forge_task(**context):
     return result.total_models_created
 ```
 
+## Incremental Loading
+
+By default, `build_core()` drops and recreates all target tables on every run (`clean=True`). For production pipelines where you want to append only new records, set `clean=False`:
+
+```python
+# First run — full load
+result = build_core(
+    source_type="bigquery",
+    source_project="my-project",
+    source_database="raw",
+    source_table_name="api_responses",
+    target_dataset="normalized",
+    clean=True,   # default — creates all tables from scratch
+)
+
+# Subsequent runs — incremental
+result = build_core(
+    source_type="bigquery",
+    source_project="my-project",
+    source_database="raw",
+    source_table_name="api_responses",
+    target_dataset="normalized",
+    clean=False,  # keeps existing tables, appends new rows only
+)
+```
+
+When `clean=False`, every generated model filters on `ingestion_hash` and `ingestion_timestamp` to skip rows that have already been processed. Only new source records are decomposed across all nesting levels.
+
+| Parameter | Behavior | Use case |
+|-----------|----------|----------|
+| `clean=True` (default) | Drops target tables, full rebuild | Development, schema changes, first deploy |
+| `clean=False` | Appends new rows only | Scheduled pipelines, production ingestion |
+
+> **Note:** If your source schema changes (new nested fields appear), run with `clean=True` once to pick up the new structure. The `on_schema_change='append_new_columns'` setting will add new columns on incremental runs, but will not remove columns that no longer appear in the source.
+
 ## Understanding the Generated Schema
 
 ### Key Columns
