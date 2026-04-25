@@ -8,7 +8,7 @@ requires-python = ">=3.9"
 authors = [
     {name = "Foxtrot Communications"}
 ]
-keywords = ["dbt", "json", "unnesting", "data-warehouse", "bigquery", "snowflake", "databricks", "redshift"]
+keywords = ["dbt", "json", "unnesting", "data-warehouse", "bigquery", "snowflake", "databricks", "redshift", "postgres"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -28,7 +28,8 @@ bigquery = ["dbt-bigquery>=1.7.0"]
 snowflake = ["dbt-snowflake>=1.7.0", "cryptography"]
 databricks = ["dbt-databricks>=1.7.0", "databricks-sdk>=0.18.0", "databricks-sql-connector"]
 redshift = ["dbt-redshift>=1.7.0"]
-all = ["foxtrotcommunications-forge-core[bigquery,snowflake,databricks,redshift]"]
+postgres = ["dbt-postgres>=1.7.0", "psycopg2-binary"]
+all = ["foxtrotcommunications-forge-core[bigquery,snowflake,databricks,redshift,postgres]"]
 dev = ["pytest", "pytest-cov", "ruff", "mypy"]
 
 [project.scripts]
@@ -67,6 +68,7 @@ omit = [
     "src/forge_core/adapters/snowflake.py",
     "src/forge_core/adapters/databricks.py",
     "src/forge_core/adapters/redshift.py",
+    "src/forge_core/adapters/postgres.py",
     "src/forge_core/adapters/templates/*",
     # CLI entry point — requires full runtime
     "src/forge_core/cli.py",

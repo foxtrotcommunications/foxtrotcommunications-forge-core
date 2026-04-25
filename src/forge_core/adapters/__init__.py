@@ -31,8 +31,11 @@ def get_adapter(adapter_type: str = "bigquery", **kwargs) -> WarehouseAdapter:
     elif adapter_type == "redshift":
         from forge_core.adapters.redshift import RedshiftAdapter
         return RedshiftAdapter(**kwargs)
+    elif adapter_type == "postgres":
+        from forge_core.adapters.postgres import PostgresAdapter
+        return PostgresAdapter(**kwargs)
     else:
         raise ValueError(
             f"Unknown adapter type: {adapter_type}. "
-            f"Supported: bigquery, snowflake, databricks, redshift"
+            f"Supported: bigquery, snowflake, databricks, redshift, postgres"
         )

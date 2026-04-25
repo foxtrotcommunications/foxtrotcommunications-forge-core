@@ -48,6 +48,8 @@ def generate_profiles_yml(
         profile = _databricks_profile(target_project, target_dataset)
     elif source_type == "redshift":
         profile = _redshift_profile(target_dataset)
+    elif source_type == "postgres":
+        profile = _postgres_profile(target_dataset)
     else:
         raise ValueError(f"Unsupported source_type: {source_type}")
 
@@ -174,6 +176,32 @@ def _redshift_profile(schema: str) -> dict:
             "outputs": {
                 schema: {
                     "type": "redshift",
+                    "host": host,
+                    "port": port,
+                    "user": user,
+                    "password": password,
+                    "dbname": database,
+                    "schema": schema,
+                    "threads": 4,
+                },
+            },
+        }
+    }
+
+def _postgres_profile(schema: str) -> dict:
+    """PostgreSQL profile using environment variables."""
+    host = os.environ.get("POSTGRES_HOST", "")
+    port = int(os.environ.get("POSTGRES_PORT", "5432"))
+    user = os.environ.get("POSTGRES_USER", "")
+    password = os.environ.get("POSTGRES_PASSWORD", "")
+    database = os.environ.get("POSTGRES_DATABASE", "")
+
+    return {
+        "forge": {
+            "target": schema,
+            "outputs": {
+                schema: {
+                    "type": "postgres",
                     "host": host,
                     "port": port,
                     "user": user,

@@ -63,6 +63,7 @@ def build_core(
     target_project: Optional[str] = None,
     project_dir: str = "./forge_project",
     limit: Optional[int] = None,
+    sample: Optional[int] = None,
     clean: bool = True,
 ) -> CoreBuildResult:
     """
@@ -84,7 +85,8 @@ def build_core(
         source_schema: Source schema (Snowflake/Databricks/Redshift)
         target_project: Target project/database (defaults to source_project for BQ)
         project_dir: Directory for the dbt project (default: ./forge_project)
-        limit: Optional row limit for root query
+        limit: Optional row limit for root query (baked into models)
+        sample: Optional sample size for schema discovery only (models are unlimited)
         clean: If True, clean target dataset before building (default: True)
 
     Returns:
@@ -163,13 +165,21 @@ def build_core(
     _clean_model_directory(models_dir)
 
     # ===== BUILD ROOT MODEL =====
+    # If --sample is set, use it as the limit for discovery but generate
+    # unlimited models at the end. If --limit is set, bake it into models.
+    discovery_limit = sample or limit
+    is_sample_mode = sample is not None
+
+    if is_sample_mode:
+        logger.info(f"Sample mode: discovering schema from {sample:,} rows")
+
     logger.info("Building root model...")
     root_result = create_and_build_root_model(
         adapter=adapter,
         qualified_table_name=ctx.qualified_table_name,
         target_dataset=target_dataset,
         source_type=source_type,
-        limit=limit,
+        limit=discovery_limit,
     )
     logger.info(f"✓ Root model built: {root_result.model_name}")
 
@@ -203,25 +213,47 @@ def build_core(
     logger.info(f"✓ Unnesting complete: {len(all_metadata)} models, "
                 f"{unnesting_result.levels_processed} levels")
 
-    # ===== GENERATE ROLLUP =====
-    logger.info("Generating rollup view...")
-    rollup_sql = adapter.generate_rollup_sql(all_metadata, target_dataset)
-    rollup_path = os.path.join(models_dir, "frg__rollup.sql")
-    with open(rollup_path, "w") as f:
-        f.write(rollup_sql)
-    logger.info("✓ Rollup SQL generated")
+    # ===== SAMPLE MODE: REWRITE ROOT MODEL =====
+    # Discovery used a LIMIT, but the output models should be unlimited.
+    # Rewrite frg.sql with the full query so `dbt build` processes all rows.
+    if is_sample_mode:
+        logger.info("Sample mode: rewriting root model without LIMIT (production-ready)")
+        unlimited_root_sql = adapter.get_root_table_sql(ctx.qualified_table_name, limit=None)
+        root_model_path = os.path.join(
+            models_dir, f"{root_result.model_name}.sql"
+        )
+        with open(root_model_path, "w") as f:
+            # Preserve the exclude tag that was added during discovery
+            tagged_sql = unlimited_root_sql.replace(
+                "config(",
+                "config( tags=['exclude'], ",
+                1,
+            )
+            f.write(tagged_sql)
+        logger.info("✓ Root model rewritten — models are now production-ready")
 
-    # Build rollup
-    dbt_command = (
-        f"dbt build --profile forge --profiles-dir . "
-        f"--select frg__rollup "
-        f"--target {target_dataset}"
-    )
-    rollup_result = run_dbt_command(dbt_command)
-    if rollup_result.returncode != 0:
-        logger.warning(f"Rollup build failed: {rollup_result.stderr}")
+    # ===== GENERATE ROLLUP =====
+    if source_type == "postgres":
+        logger.info("Skipping rollup (not supported for PostgreSQL)")
     else:
-        logger.info("✓ Rollup view built")
+        logger.info("Generating rollup view...")
+        rollup_sql = adapter.generate_rollup_sql(all_metadata, target_dataset)
+        rollup_path = os.path.join(models_dir, "frg__rollup.sql")
+        with open(rollup_path, "w") as f:
+            f.write(rollup_sql)
+        logger.info("✓ Rollup SQL generated")
+
+        # Build rollup
+        dbt_command = (
+            f"dbt build --profile forge --profiles-dir . "
+            f"--select frg__rollup "
+            f"--target {target_dataset}"
+        )
+        rollup_result = run_dbt_command(dbt_command)
+        if rollup_result.returncode != 0:
+            logger.warning(f"Rollup build failed: {rollup_result.stderr}")
+        else:
+            logger.info("✓ Rollup view built")
 
     # ===== GENERATE ARTIFACTS =====
     logger.info("Generating artifacts...")

@@ -153,13 +153,24 @@ def run_dbt_command(
             stdout_content = capture_stdout.getvalue()
             stderr_content = capture_stderr.getvalue()
 
+            # dbt-core 1.11+ can report success=False due to protobuf
+            # serialization bugs even when the build actually passed.
+            # Fall back to checking stdout for ERROR=0 as a secondary signal.
+            actual_success = result.success
+            if not actual_success and "ERROR=0" in stdout_content:
+                logger.warning(
+                    "dbtRunner reported success=False but stdout shows ERROR=0 — "
+                    "treating as success (likely dbt-core serialization bug)"
+                )
+                actual_success = True
+
             class DbtResult:
                 def __init__(self, success, stdout, stderr):
                     self.returncode = 0 if success else 1
                     self.stdout = stdout
                     self.stderr = stderr
 
-            result_obj = DbtResult(result.success, stdout_content, stderr_content)
+            result_obj = DbtResult(actual_success, stdout_content, stderr_content)
 
             with open(log_file, "a") as f:
                 if stdout_content:

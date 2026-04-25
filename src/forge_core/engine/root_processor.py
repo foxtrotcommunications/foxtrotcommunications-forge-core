@@ -127,5 +127,7 @@ def build_root_table_name_for_keys(
         return f'"{target_project}"."{target_dataset}"."FRG"'
     elif source_type == "databricks":
         return f"{target_project}.{target_dataset}.frg"
+    elif source_type in ("redshift", "postgres"):
+        return f'"{target_dataset}"."frg"'
     else:  # BigQuery
         return f"`{target_project}.{target_dataset}.frg`"

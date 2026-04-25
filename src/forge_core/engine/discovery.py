@@ -122,6 +122,12 @@ def process_table_task(row):
         is_databricks = (
             getattr(adapter, "__class__", None).__name__ == "DatabricksAdapter"
         )
+        is_postgres = (
+            getattr(adapter, "__class__", None).__name__ == "PostgresAdapter"
+        )
+        is_redshift = (
+            getattr(adapter, "__class__", None).__name__ == "RedshiftAdapter"
+        )
         safe_table_base = row["table_name"].replace("`", "").replace('"', "")
         if is_snowflake:
             base_model_name = safe_table_base.split(".")[-1].upper()
@@ -131,12 +137,16 @@ def process_table_task(row):
             base_model_name = safe_table_base.split(".")[-1]
             model_name = base_model_name + "__" + table_index_s
             model_ref = f"{{{{ref('{base_model_name}')}}}}"
+        elif is_postgres or is_redshift:
+            base_model_name = safe_table_base.split(".")[-1]
+            model_name = base_model_name + "__" + table_index_s
+            model_ref = f"{{{{ref('{base_model_name}')}}}}"
         else:
             base_model_name = row["table_name"].replace("`", "").split(".")[2]
             model_name = base_model_name + "__" + table_index_s
             model_ref = f"{{{{ref('{base_model_name}')}}}}"
 
-        if keys_df.empty == True or len(keys_df.iloc[0, 0]) == 0:
+        if keys_df.empty == True or keys_df.iloc[0, 0] is None or len(keys_df.iloc[0, 0]) == 0:
             return None
 
         current_table_path = row["path"] + "__" + row["field_name"]
@@ -158,6 +168,12 @@ def process_table_task(row):
                 next_table_name = f"{parts[0]}.{parts[1]}.{model_name}"
             else:
                 next_table_name = model_name
+        elif is_postgres or is_redshift:
+            parts = cleaned_ref.split(".")
+            if len(parts) >= 2:
+                next_table_name = f'"{parts[0]}"."{model_name}"'
+            else:
+                next_table_name = f'"{model_name}"'
         else:
             next_table_name = f"`{cleaned_ref}__{table_index_s}`"
 
@@ -259,7 +275,7 @@ def process_table_task(row):
             "parent_model": row["table_name"]
             .replace("`", "")
             .replace('"', "")
-            .split(".")[2],
+            .split(".")[-1],
             "field_name": row["field_name"],
             "is_array": row["is_array"],
             "type": "ARRAY" if row["is_array"] else "STRUCT",

@@ -35,7 +35,7 @@ def main():
     build_parser.add_argument(
         "--source-type",
         required=True,
-        choices=["bigquery", "snowflake", "databricks", "redshift"],
+        choices=["bigquery", "snowflake", "databricks", "redshift", "postgres"],
         help="Warehouse type",
     )
     build_parser.add_argument(
@@ -77,6 +77,12 @@ def main():
         type=int,
         default=None,
         help="Limit root query rows (useful for testing)",
+    )
+    build_parser.add_argument(
+        "--sample",
+        type=int,
+        default=None,
+        help="Discover schema from N sample rows, but generate unlimited production models",
     )
     build_parser.add_argument(
         "--no-clean",
@@ -122,6 +128,7 @@ def main():
             target_project=args.target_project,
             project_dir=args.project_dir,
             limit=args.limit,
+            sample=args.sample,
             clean=not args.no_clean,
         )
 
@@ -131,6 +138,10 @@ def main():
         print(f"    Rows processed:  {result.total_rows_processed}")
         print(f"    Levels:          {result.levels_processed}")
         print(f"    Project dir:     {result.project_dir}")
+        if args.sample:
+            print(f"    Mode:            SAMPLE ({args.sample:,} rows)")
+            print(f"    Models are production-ready (no LIMIT)")
+            print(f"    Run: cd {result.project_dir} && dbt build")
         print(f"{'='*60}")
 
     except Exception as e:
