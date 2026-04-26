@@ -1,7 +1,7 @@
 SELECT array_agg(DISTINCT k) AS keys FROM (
-    SELECT json_object_keys(elem.value) AS k
+    SELECT jsonb_object_keys(elem.value) AS k
     FROM ~TABLE_NAME~,
-    LATERAL json_array_elements("~JSON_FIELD~"::json) AS elem
+    LATERAL jsonb_array_elements("~JSON_FIELD~") AS elem
     WHERE "~JSON_FIELD~" IS NOT NULL
-    AND json_typeof(elem.value) = 'object'
+    AND jsonb_typeof(elem.value) = 'object'
 ) subq

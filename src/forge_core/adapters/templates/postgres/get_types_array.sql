@@ -8,12 +8,12 @@ SELECT
 FROM (
     SELECT '~KEY~' AS field,
         min(
-            CASE json_typeof(json_extract_path(elem.value, '~KEY~'))
+            CASE jsonb_typeof(jsonb_extract_path(elem.value, '~KEY~'))
                 WHEN 'object' THEN 0
                 WHEN 'array' THEN 1
                 ELSE 2
             END
         ) AS min_type
     FROM ~TABLE_NAME~,
-    LATERAL json_array_elements("~JSON_FIELD~"::json) AS elem
+    LATERAL jsonb_array_elements("~JSON_FIELD~") AS elem
 ) j

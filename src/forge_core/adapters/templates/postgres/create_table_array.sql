@@ -13,9 +13,9 @@ SELECT
     ,~DBT_SELECT~
 FROM (
     SELECT t.idx, t.ingestion_hash, t.ingestion_timestamp, t.table_path,
-           elem.value::text AS "~JSON_FIELD~"
+           elem.value AS "~JSON_FIELD~"
     FROM ~TABLE_NAME~ t,
-    LATERAL json_array_elements(t."~JSON_FIELD~"::json) AS elem
+    LATERAL jsonb_array_elements(t."~JSON_FIELD~") AS elem
 ) _src
 WHERE _src."~JSON_FIELD~" IS NOT NULL
 {% if is_incremental() %}

@@ -2,8 +2,12 @@
 Forge Core — PostgreSQL Adapter
 
 PostgreSQL implementation of the WarehouseAdapter.
-Uses json (text-based) functions — NOT native jsonb operators.
-All JSON/JSONB source columns are cast to text at the root model stage.
+Uses native jsonb functions for maximum performance — intermediate
+tables store jsonb natively to avoid text↔json re-parsing at every
+BFS level.
+
+Source column type is auto-detected via pg_typeof(); jsonb sources
+skip the initial cast entirely.
 
 No rollup support — PostgreSQL cannot handle the CTE-heavy rollup SQL.
 """
@@ -23,9 +27,9 @@ class PostgresAdapter(WarehouseAdapter):
     """
     PostgreSQL implementation of the WarehouseAdapter.
 
-    Connects via psycopg2. All JSON processing uses the text-based `json`
-    type functions (json_object_keys, json_extract_path_text, json_typeof,
-    json_array_elements) — never native jsonb operators.
+    Connects via psycopg2. All JSON processing uses native jsonb
+    functions (jsonb_object_keys, jsonb_extract_path_text, jsonb_typeof,
+    jsonb_array_elements) for optimal performance on pre-parsed binary data.
     """
 
     def __init__(
@@ -95,8 +99,11 @@ class PostgresAdapter(WarehouseAdapter):
         try:
             return pd.read_sql_query(sql, self.connection)
         except Exception as e:
-            logger.error(f"Query execution error: {e}")
-            logger.debug(f"SQL: {sql}")
+            # Log at DEBUG — callers like check_column_is_json() and
+            # _get_existing_name_assignments() expect failures as part of
+            # normal probe-and-catch flow.  ERROR-level logging here is
+            # misleading because the caller handles the exception.
+            logger.debug(f"Query execution error (expected in probe flow): {e}")
             raise
 
     def _read_template(self, template_name: str) -> str:
@@ -157,31 +164,32 @@ class PostgresAdapter(WarehouseAdapter):
         """
         Generate PostgreSQL SQL for JSON field extraction.
 
-        Uses json_extract_path_text() for scalars, json_extract_path()::text
-        for objects/arrays. Objects are wrapped in [...] for next-level processing.
+        Uses native jsonb functions. Intermediate columns are already jsonb
+        (no cast needed). Objects are wrapped via jsonb_build_array() to
+        stay in jsonb space without text round-trips.
         """
         if field_type == "array":
-            # Array: pass through as-is (already a JSON array string)
+            # Array: keep as jsonb for next-level jsonb_array_elements()
             return (
                 f"CASE "
-                f"WHEN json_typeof(json_extract_path(\"{field_name}\"::json, '{safe_field}')) = 'null' "
+                f"WHEN jsonb_typeof(jsonb_extract_path(\"{field_name}\", '{safe_field}')) = 'null' "
                 f"THEN NULL "
-                f"ELSE json_extract_path(\"{field_name}\"::json, '{safe_field}')::text "
+                f"ELSE jsonb_extract_path(\"{field_name}\", '{safe_field}') "
                 f"END AS \"{clean_field_name}\""
             )
         elif field_type == "object":
-            # Object: wrap in [...] so downstream treats it as an array
+            # Object: wrap in array via jsonb_build_array() (stays in jsonb space)
             return (
                 f"CASE "
-                f"WHEN json_typeof(json_extract_path(\"{field_name}\"::json, '{safe_field}')) = 'null' "
+                f"WHEN jsonb_typeof(jsonb_extract_path(\"{field_name}\", '{safe_field}')) = 'null' "
                 f"THEN NULL "
-                f"ELSE '[' || json_extract_path(\"{field_name}\"::json, '{safe_field}')::text || ']' "
+                f"ELSE jsonb_build_array(jsonb_extract_path(\"{field_name}\", '{safe_field}')) "
                 f"END AS \"{clean_field_name}\""
             )
         else:
-            # Scalar: extract as text
+            # Scalar: extract as text (final value)
             return (
-                f"json_extract_path_text(\"{field_name}\"::json, '{safe_field}') "
+                f"jsonb_extract_path_text(\"{field_name}\", '{safe_field}') "
                 f"AS \"{clean_field_name}\""
             )
 
@@ -302,23 +310,67 @@ class PostgresAdapter(WarehouseAdapter):
     # JSON Column Detection (non-ABC, used internally)
     # =========================================================================
 
-    def check_column_is_json(self, table_name: str, column_name: str) -> bool:
+    def _detect_column_type(self, table_name: str, column_name: str) -> str:
         """
-        Check if a column contains JSON data.
+        Detect the PostgreSQL data type of a column using pg_typeof().
 
-        Attempts to cast the first non-null value to json and checks that
-        it starts with '{' or '[' (object or array, not bare scalars).
+        Returns the type as a lowercase string, e.g. 'jsonb', 'json',
+        'text', 'integer', etc.  Uses the table directly — no
+        information_schema dependency.
         """
         query = f"""
-            SELECT
-                ({column_name}::text)::json IS NOT NULL
-                AND left(ltrim({column_name}::text), 1) IN ('{{', '[')
+            SELECT pg_typeof({column_name})::text
             FROM {table_name}
             WHERE {column_name} IS NOT NULL
             LIMIT 1
         """
         try:
-            result_df = self.execute_query(query)
+            df = self.execute_query(query)
+            if not df.empty:
+                return str(df.iloc[0, 0]).lower().strip()
+        except Exception:
+            pass
+        return "unknown"
+
+    def check_column_is_json(self, table_name: str, column_name: str) -> bool:
+        """
+        Check if a column contains JSON data.
+
+        First checks the column's native type via pg_typeof().
+        If it's json/jsonb, returns True immediately.
+        Otherwise, uses a two-step text probe:
+          1. Check if value starts with '{' or '['.
+          2. Validate with a ::jsonb cast.
+        """
+        col_type = self._detect_column_type(table_name, column_name)
+
+        # Native JSON types — no probing needed
+        if col_type in ('jsonb', 'json'):
+            return True
+
+        # Step 1: cheap text pre-check — does the value *look* like JSON?
+        precheck_query = f"""
+            SELECT left(ltrim({column_name}::text), 1) IN ('{chr(123)}', '[')
+            FROM {table_name}
+            WHERE {column_name} IS NOT NULL
+            LIMIT 1
+        """
+        try:
+            pre_df = self.execute_query(precheck_query)
+            if pre_df.empty or not bool(pre_df.iloc[0, 0]):
+                return False
+        except Exception:
+            return False
+
+        # Step 2: validate the cast actually succeeds
+        validate_query = f"""
+            SELECT ({column_name}::text)::jsonb IS NOT NULL
+            FROM {table_name}
+            WHERE {column_name} IS NOT NULL
+            LIMIT 1
+        """
+        try:
+            result_df = self.execute_query(validate_query)
             if not result_df.empty and bool(result_df.iloc[0, 0]):
                 return True
         except Exception:
@@ -333,34 +385,52 @@ class PostgresAdapter(WarehouseAdapter):
 
     def get_json_column_mapping(self, table_name: str) -> str:
         """
-        Generate SQL that formats table rows as a single JSON object.
+        Generate SQL that formats table rows as a single jsonb object.
 
-        For single-column JSON tables: uses the column directly as root.
-        For multi-column tables: wraps all columns into a json_build_object.
+        Auto-detects column types via pg_typeof():
+        - jsonb columns: used directly (no cast)
+        - json columns: cast to jsonb
+        - text columns containing JSON: cast to jsonb
+        - non-JSON columns: wrapped via to_jsonb()
 
-        JSONB columns are cast to text first (spec constraint #3).
+        Output column "root" is always jsonb.
         """
         columns = self.get_table_columns(table_name)
 
         # Single JSON column case
         if len(columns) == 1 and self.check_column_is_json(table_name, columns[0]):
+            col = columns[0]
+            col_type = self._detect_column_type(table_name, col)
+            if col_type == 'jsonb':
+                # Already jsonb — use directly, no cast
+                cast = ''
+            elif col_type == 'json':
+                # json → jsonb (lightweight, same parse tree)
+                cast = '::jsonb'
+            else:
+                # text containing JSON → cast to jsonb
+                cast = '::jsonb'
             return (
-                f'SELECT {columns[0]}::text::json AS "root" '
+                f'SELECT {col}{cast} AS "root" '
                 f"FROM {table_name} "
                 f"~LIMITER~"
             )
 
-        # Multi-column case: wrap in json_build_object
+        # Multi-column case: wrap in jsonb_build_object
         build_parts = []
         for col in columns:
             if self.check_column_is_json(table_name, col):
-                # Cast jsonb/json to text then back to json
-                build_parts.append(f"'{col}', {col}::text::json")
+                col_type = self._detect_column_type(table_name, col)
+                if col_type == 'jsonb':
+                    build_parts.append(f"'{col}', {col}")
+                else:
+                    # json or text → cast to jsonb
+                    build_parts.append(f"'{col}', {col}::jsonb")
             else:
                 build_parts.append(f"'{col}', {col}")
 
         sql = (
-            f"SELECT json_build_object({', '.join(build_parts)}) AS \"root\" "
+            f"SELECT jsonb_build_object({', '.join(build_parts)}) AS \"root\" "
             f"FROM {table_name} "
             f"~LIMITER~"
         )

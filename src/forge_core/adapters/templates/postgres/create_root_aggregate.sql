@@ -7,7 +7,7 @@
 
 SELECT
     cast(ROW_NUMBER() over(partition by md5("root"::text) order by "root"::text) as varchar) AS idx
-    ,'[' || "root"::text || ']' AS "root"
+    ,jsonb_build_array("root") AS "root"
     ,md5("root"::text) AS ingestion_hash
     ,CURRENT_TIMESTAMP AS ingestion_timestamp
     ,'frg' AS table_path
