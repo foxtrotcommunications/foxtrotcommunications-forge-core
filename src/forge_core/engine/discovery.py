@@ -16,14 +16,21 @@ from forge_core.engine.model_generator import create_file_in_models
 logger = logging.getLogger(__name__)
 
 
-def _get_existing_name_assignments(parent_table_name):
+def _get_existing_name_assignments(parent_table_name, prefix_groups):
     """
-    Query existing child tables to learn which field → rank assignments
+    Probe existing child tables to learn which field → rank assignments
     are already locked from previous runs.
 
-    Uses the table_path column (written by every template) to discover
-    which FHIR field each physical table actually contains. This prevents
-    rank shifts when new fields with colliding 4-char prefixes appear.
+    Instead of querying INFORMATION_SCHEMA (which many enterprise customers
+    restrict), we directly attempt to read the table_path column from
+    candidate child tables. If the table exists, we learn the mapping.
+    If it doesn't, the query fails and we move on.
+
+    All queries stay within the same dataset — no cross-schema access needed.
+
+    Args:
+        parent_table_name: Qualified parent table (e.g. `proj.dataset.frg__root__raw_1`)
+        prefix_groups: Set of 4-char prefixes to probe (e.g. {"exte", "extr"})
 
     Returns:
         dict mapping field_name → existing_rank (int)
@@ -32,102 +39,65 @@ def _get_existing_name_assignments(parent_table_name):
     adapter = get_warehouse_adapter()
     assignments = {}
 
+    if not prefix_groups:
+        return assignments
+
     try:
-        # Extract dataset reference from qualified parent table name
-        # BigQuery: `project.dataset.table` → project.dataset
-        # Snowflake: "DB"."SCHEMA"."TABLE" → "DB"."SCHEMA"
-        # Postgres: "schema"."table" → "schema"
         cleaned = parent_table_name.replace('`', '').replace('"', '')
         parts = cleaned.split('.')
-
         parent_short = parts[-1]  # e.g. "frg__root__raw_1"
 
-        # Build query to find child tables and their table_path values
-        # Child tables are named: {parent}__<suffix>
         is_snowflake = 'SnowflakeAdapter' in str(type(adapter))
         is_databricks = 'DatabricksAdapter' in str(type(adapter))
         is_postgres = 'PostgresAdapter' in str(type(adapter))
         is_redshift = 'RedshiftAdapter' in str(type(adapter))
 
-        if is_snowflake:
-            db, schema = parts[0], parts[1]
-            info_sql = f"""
-                SELECT table_name
-                FROM "{db}".INFORMATION_SCHEMA.TABLES
-                WHERE table_schema = '{schema}'
-                  AND UPPER(table_name) LIKE UPPER('{parent_short}\_\_%%')
-            """
-        elif is_databricks:
-            catalog, schema = parts[0], parts[1]
-            info_sql = f"""
-                SELECT table_name
-                FROM {catalog}.information_schema.tables
-                WHERE table_schema = '{schema}'
-                  AND table_name LIKE '{parent_short}\_\_%%'
-            """
-        elif is_postgres or is_redshift:
-            schema = parts[0] if len(parts) >= 2 else 'public'
-            info_sql = f"""
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = '{schema}'
-                  AND table_name LIKE '{parent_short}\_\_%%'
-            """
-        else:
-            # BigQuery
-            dataset_ref = '.'.join(parts[:-1])  # project.dataset
-            info_sql = f"""
-                SELECT table_name
-                FROM `{dataset_ref}.INFORMATION_SCHEMA.TABLES`
-                WHERE table_name LIKE '{parent_short}\_\_%%'
-            """
-
-        tables_df = adapter.execute_query(info_sql)
-        if tables_df.empty:
-            return assignments
-
-        # For each child table, read its table_path to learn the field mapping
-        for _, trow in tables_df.iterrows():
-            child_table = trow['table_name']
-            suffix = child_table[len(parent_short) + 2:]  # strip parent__
-
-            # Parse the suffix: e.g. "extr1" → prefix="extr", rank=1
-            match = re.match(r'^([a-zA-Z_]+)(\d+)$', suffix)
-            if not match:
-                continue
-
-            prefix = match.group(1)
-            rank = int(match.group(2))
-
-            # Query table_path from the existing table (just need 1 row)
+        def _qualify(child_name):
+            """Build a fully-qualified reference for a child table."""
             if is_snowflake:
-                fq_child = f'"{db}"."{schema}"."{child_table}"'
+                return f'"{parts[0]}"."{parts[1]}"."{child_name}"'
             elif is_databricks:
-                fq_child = f'{catalog}.{schema}.{child_table}'
+                return f'{parts[0]}.{parts[1]}.{child_name}'
             elif is_postgres or is_redshift:
-                fq_child = f'"{schema}"."{child_table}"'
+                schema = parts[0] if len(parts) >= 2 else 'public'
+                return f'"{schema}"."{child_name}"'
             else:
-                fq_child = f'`{dataset_ref}.{child_table}`'
+                # BigQuery
+                dataset_ref = '.'.join(parts[:-1])
+                return f'`{dataset_ref}.{child_name}`'
 
-            try:
-                path_sql = f"SELECT DISTINCT table_path FROM {fq_child} LIMIT 1"
-                path_df = adapter.execute_query(path_sql)
-                if not path_df.empty:
+        # For each prefix group, probe rank 1, 2, 3, ... until we miss.
+        # Most groups have 1-2 members; cap at 10 for safety.
+        MAX_PROBE_RANK = 10
+
+        for prefix in prefix_groups:
+            for rank in range(1, MAX_PROBE_RANK + 1):
+                child_name = f"{parent_short}__{prefix}{rank}"
+                fq_child = _qualify(child_name)
+
+                try:
+                    path_sql = f"SELECT DISTINCT table_path FROM {fq_child} LIMIT 1"
+                    path_df = adapter.execute_query(path_sql)
+
+                    if path_df.empty:
+                        # Table exists but is empty — stop probing this prefix
+                        break
+
                     table_path = path_df.iloc[0, 0]
                     # table_path is e.g. "frg__root__extension"
                     # The field name is the last segment
                     field_name = table_path.split('__')[-1]
                     assignments[field_name] = rank
                     logger.debug(
-                        f"Locked existing name: {field_name} → "
-                        f"{prefix}{rank} (from {child_table})"
+                        f"Locked existing name: {field_name} -> "
+                        f"{prefix}{rank} (from {child_name})"
                     )
-            except Exception as e:
-                logger.debug(f"Could not read table_path from {child_table}: {e}")
-                continue
+                except Exception:
+                    # Table doesn't exist — no more ranks for this prefix
+                    break
 
     except Exception as e:
-        logger.debug(f"Could not query existing child tables: {e}")
+        logger.debug(f"Could not probe existing child tables: {e}")
 
     return assignments
 
@@ -204,7 +174,11 @@ def types_builder(table_name, field_name, keys_df, is_array):
     # within their prefix group. This prevents rank shifts when new fields
     # with colliding 4-char prefixes appear alphabetically before existing
     # fields in incremental mode.
-    existing_assignments = _get_existing_name_assignments(table_name)
+    # Extract the set of 4-char prefixes that have more than one field
+    # (only these can suffer from rank-shift collisions)
+    prefix_counts = df["table_index"].value_counts()
+    collision_prefixes = set(prefix_counts[prefix_counts > 1].index)
+    existing_assignments = _get_existing_name_assignments(table_name, collision_prefixes)
 
     if existing_assignments:
         logger.info(
