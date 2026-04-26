@@ -16,6 +16,122 @@ from forge_core.engine.model_generator import create_file_in_models
 logger = logging.getLogger(__name__)
 
 
+def _get_existing_name_assignments(parent_table_name):
+    """
+    Query existing child tables to learn which field → rank assignments
+    are already locked from previous runs.
+
+    Uses the table_path column (written by every template) to discover
+    which FHIR field each physical table actually contains. This prevents
+    rank shifts when new fields with colliding 4-char prefixes appear.
+
+    Returns:
+        dict mapping field_name → existing_rank (int)
+        e.g. {"extension": 1, "extensionString": 2}
+    """
+    adapter = get_warehouse_adapter()
+    assignments = {}
+
+    try:
+        # Extract dataset reference from qualified parent table name
+        # BigQuery: `project.dataset.table` → project.dataset
+        # Snowflake: "DB"."SCHEMA"."TABLE" → "DB"."SCHEMA"
+        # Postgres: "schema"."table" → "schema"
+        cleaned = parent_table_name.replace('`', '').replace('"', '')
+        parts = cleaned.split('.')
+
+        parent_short = parts[-1]  # e.g. "frg__root__raw_1"
+
+        # Build query to find child tables and their table_path values
+        # Child tables are named: {parent}__<suffix>
+        is_snowflake = 'SnowflakeAdapter' in str(type(adapter))
+        is_databricks = 'DatabricksAdapter' in str(type(adapter))
+        is_postgres = 'PostgresAdapter' in str(type(adapter))
+        is_redshift = 'RedshiftAdapter' in str(type(adapter))
+
+        if is_snowflake:
+            db, schema = parts[0], parts[1]
+            info_sql = f"""
+                SELECT table_name
+                FROM "{db}".INFORMATION_SCHEMA.TABLES
+                WHERE table_schema = '{schema}'
+                  AND UPPER(table_name) LIKE UPPER('{parent_short}\_\_%%')
+            """
+        elif is_databricks:
+            catalog, schema = parts[0], parts[1]
+            info_sql = f"""
+                SELECT table_name
+                FROM {catalog}.information_schema.tables
+                WHERE table_schema = '{schema}'
+                  AND table_name LIKE '{parent_short}\_\_%%'
+            """
+        elif is_postgres or is_redshift:
+            schema = parts[0] if len(parts) >= 2 else 'public'
+            info_sql = f"""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = '{schema}'
+                  AND table_name LIKE '{parent_short}\_\_%%'
+            """
+        else:
+            # BigQuery
+            dataset_ref = '.'.join(parts[:-1])  # project.dataset
+            info_sql = f"""
+                SELECT table_name
+                FROM `{dataset_ref}.INFORMATION_SCHEMA.TABLES`
+                WHERE table_name LIKE '{parent_short}\_\_%%'
+            """
+
+        tables_df = adapter.execute_query(info_sql)
+        if tables_df.empty:
+            return assignments
+
+        # For each child table, read its table_path to learn the field mapping
+        for _, trow in tables_df.iterrows():
+            child_table = trow['table_name']
+            suffix = child_table[len(parent_short) + 2:]  # strip parent__
+
+            # Parse the suffix: e.g. "extr1" → prefix="extr", rank=1
+            match = re.match(r'^([a-zA-Z_]+)(\d+)$', suffix)
+            if not match:
+                continue
+
+            prefix = match.group(1)
+            rank = int(match.group(2))
+
+            # Query table_path from the existing table (just need 1 row)
+            if is_snowflake:
+                fq_child = f'"{db}"."{schema}"."{child_table}"'
+            elif is_databricks:
+                fq_child = f'{catalog}.{schema}.{child_table}'
+            elif is_postgres or is_redshift:
+                fq_child = f'"{schema}"."{child_table}"'
+            else:
+                fq_child = f'`{dataset_ref}.{child_table}`'
+
+            try:
+                path_sql = f"SELECT DISTINCT table_path FROM {fq_child} LIMIT 1"
+                path_df = adapter.execute_query(path_sql)
+                if not path_df.empty:
+                    table_path = path_df.iloc[0, 0]
+                    # table_path is e.g. "frg__root__extension"
+                    # The field name is the last segment
+                    field_name = table_path.split('__')[-1]
+                    assignments[field_name] = rank
+                    logger.debug(
+                        f"Locked existing name: {field_name} → "
+                        f"{prefix}{rank} (from {child_table})"
+                    )
+            except Exception as e:
+                logger.debug(f"Could not read table_path from {child_table}: {e}")
+                continue
+
+    except Exception as e:
+        logger.debug(f"Could not query existing child tables: {e}")
+
+    return assignments
+
+
 def types_builder(table_name, field_name, keys_df, is_array):
     """
     Builds a DataFrame containing type information for fields within a table.
@@ -82,9 +198,50 @@ def types_builder(table_name, field_name, keys_df, is_array):
     # Sort by field to ensure deterministic ranking
     df = df.sort_values(by=["field"])
 
+    # ── Stable naming: preserve existing table_path → rank assignments ──
+    # Query child tables from previous runs to learn which field → rank
+    # mappings are already locked. New fields get the next available rank
+    # within their prefix group. This prevents rank shifts when new fields
+    # with colliding 4-char prefixes appear alphabetically before existing
+    # fields in incremental mode.
+    existing_assignments = _get_existing_name_assignments(table_name)
+
+    if existing_assignments:
+        logger.info(
+            f"Found {len(existing_assignments)} existing name assignments "
+            f"for {table_name}: {existing_assignments}"
+        )
+
+    def _stable_rank(group):
+        """Rank fields within a prefix group, preserving existing assignments."""
+        prefix = group.name  # the 4-char prefix
+        fields = group["field"].tolist()
+
+        # Separate locked vs new fields
+        locked = {f: existing_assignments[f] for f in fields
+                  if f in existing_assignments}
+        new_fields = [f for f in fields if f not in existing_assignments]
+
+        # Find next available rank (after all locked ranks)
+        used_ranks = set(locked.values())
+        next_rank = max(used_ranks, default=0) + 1
+
+        # Assign ranks: locked fields keep theirs, new fields get next available
+        ranks = {}
+        for f, r in locked.items():
+            ranks[f] = r
+        for f in sorted(new_fields):  # alphabetical for determinism among new
+            while next_rank in used_ranks:
+                next_rank += 1
+            ranks[f] = next_rank
+            used_ranks.add(next_rank)
+            next_rank += 1
+
+        return group["field"].map(ranks)
+
     df["table_key"] = (
-        df.groupby("table_index")["field"]
-        .rank(method="first", ascending=True, na_option="top")
+        df.groupby("table_index", group_keys=False)
+        .apply(_stable_rank)
         .astype(int)
     )
 
