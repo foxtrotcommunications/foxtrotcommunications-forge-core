@@ -7,6 +7,25 @@ on:
     branches: ["main"]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: pip install -e ".[bigquery,dev]"
+
+      - name: Syntax check
+        run: python -m py_compile src/forge_core/core.py
+
+      - name: Import check
+        run: python -c "from forge_core.core import build_core; print('✓ imports clean')"
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -22,9 +41,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package and dev dependencies
-        run: |
-          pip install -e ".[bigquery,dev]"
+        run: pip install -e ".[bigquery,dev]"
 
       - name: Run tests
-        run: |
-          pytest tests/ -v --tb=short --cov=forge_core --cov-report=term-missing
+        run: pytest tests/ -v --tb=short --cov=forge_core --cov-report=term-missing
