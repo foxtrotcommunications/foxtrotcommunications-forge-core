@@ -35,7 +35,7 @@ def main():
     build_parser.add_argument(
         "--source-type",
         required=True,
-        choices=["bigquery", "snowflake", "databricks", "redshift", "postgres"],
+        choices=["bigquery", "snowflake", "databricks", "redshift"],
         help="Warehouse type",
     )
     build_parser.add_argument(

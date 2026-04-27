@@ -90,10 +90,6 @@ def build_qualified_table_name(
         schema = source_schema or "public"
         return f'"{schema}"."{source_table_name}"'
 
-    elif source_type == "postgres":
-        schema = source_schema or "public"
-        return f'"{schema}"."{source_table_name}"'
-
     else:  # BigQuery (default)
         if not source_project:
             raise ValueError("source_project is required for BigQuery")
@@ -117,9 +113,6 @@ def build_root_table_name(
     elif source_type == "redshift":
         return f'"{target_dataset}"."frg"'
 
-    elif source_type == "postgres":
-        return f'"{target_dataset}"."frg"'
-
     else:  # BigQuery
         return f"`{target_project}.{target_dataset}.frg`"
 
@@ -138,7 +131,7 @@ def validate_build_context(ctx: BuildContext) -> Tuple[bool, Optional[str]]:
         if not ctx.source_database:
             return False, "source_database (dataset) is required for BigQuery"
 
-    if ctx.source_type in ("snowflake", "databricks", "redshift", "postgres"):
+    if ctx.source_type in ("snowflake", "databricks", "redshift"):
         if not ctx.source_database:
             return False, f"source_database is required for {ctx.source_type}"
 

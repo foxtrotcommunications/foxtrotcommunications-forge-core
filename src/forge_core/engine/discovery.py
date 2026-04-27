@@ -49,7 +49,6 @@ def _get_existing_name_assignments(parent_table_name, prefix_groups):
 
         is_snowflake = 'SnowflakeAdapter' in str(type(adapter))
         is_databricks = 'DatabricksAdapter' in str(type(adapter))
-        is_postgres = 'PostgresAdapter' in str(type(adapter))
         is_redshift = 'RedshiftAdapter' in str(type(adapter))
 
         def _qualify(child_name):
@@ -58,7 +57,7 @@ def _get_existing_name_assignments(parent_table_name, prefix_groups):
                 return f'"{parts[0]}"."{parts[1]}"."{child_name}"'
             elif is_databricks:
                 return f'{parts[0]}.{parts[1]}.{child_name}'
-            elif is_postgres or is_redshift:
+            elif is_redshift:
                 schema = parts[0] if len(parts) >= 2 else 'public'
                 return f'"{schema}"."{child_name}"'
             else:
@@ -253,9 +252,6 @@ def process_table_task(row):
         is_databricks = (
             getattr(adapter, "__class__", None).__name__ == "DatabricksAdapter"
         )
-        is_postgres = (
-            getattr(adapter, "__class__", None).__name__ == "PostgresAdapter"
-        )
         is_redshift = (
             getattr(adapter, "__class__", None).__name__ == "RedshiftAdapter"
         )
@@ -268,7 +264,7 @@ def process_table_task(row):
             base_model_name = safe_table_base.split(".")[-1]
             model_name = base_model_name + "__" + table_index_s
             model_ref = f"{{{{ref('{base_model_name}')}}}}"
-        elif is_postgres or is_redshift:
+        elif is_redshift:
             base_model_name = safe_table_base.split(".")[-1]
             model_name = base_model_name + "__" + table_index_s
             model_ref = f"{{{{ref('{base_model_name}')}}}}"
@@ -299,7 +295,7 @@ def process_table_task(row):
                 next_table_name = f"{parts[0]}.{parts[1]}.{model_name}"
             else:
                 next_table_name = model_name
-        elif is_postgres or is_redshift:
+        elif is_redshift:
             parts = cleaned_ref.split(".")
             if len(parts) >= 2:
                 next_table_name = f'"{parts[0]}"."{model_name}"'

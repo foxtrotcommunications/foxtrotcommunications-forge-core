@@ -24,7 +24,6 @@ from forge_core.engine.build_context import (
 )
 from forge_core.engine.root_processor import (
     create_and_build_root_model,
-    create_and_build_root_model_batched,
     get_rows_processed,
     has_root_keys,
 )
@@ -66,7 +65,6 @@ def build_core(
     limit: Optional[int] = None,
     sample: Optional[int] = None,
     clean: bool = True,
-    batch_size: Optional[int] = None,
 ) -> CoreBuildResult:
     """
     Decompose nested JSON into normalized dbt models.
@@ -90,9 +88,6 @@ def build_core(
         limit: Optional row limit for root query (baked into models)
         sample: Optional sample size for schema discovery only (models are unlimited)
         clean: If True, clean target dataset before building (default: True)
-        batch_size: Optional batch ceiling for Postgres root builds.
-            Caps per-query memory by processing source rows in chunks.
-            Only used when source_type is 'postgres'.
 
     Returns:
         CoreBuildResult with metadata, diagrams, and paths
@@ -179,23 +174,13 @@ def build_core(
         logger.info(f"Sample mode: discovering schema from {sample:,} rows")
 
     logger.info("Building root model...")
-    if batch_size and source_type == "postgres":
-        root_result = create_and_build_root_model_batched(
-            adapter=adapter,
-            qualified_table_name=ctx.qualified_table_name,
-            target_dataset=target_dataset,
-            source_type=source_type,
-            batch_size=batch_size,
-            limit=discovery_limit,
-        )
-    else:
-        root_result = create_and_build_root_model(
-            adapter=adapter,
-            qualified_table_name=ctx.qualified_table_name,
-            target_dataset=target_dataset,
-            source_type=source_type,
-            limit=discovery_limit,
-        )
+    root_result = create_and_build_root_model(
+        adapter=adapter,
+        qualified_table_name=ctx.qualified_table_name,
+        target_dataset=target_dataset,
+        source_type=source_type,
+        limit=discovery_limit,
+    )
     logger.info(f"✓ Root model built: {root_result.model_name}")
 
     # ===== CHECK ROOT HAS KEYS =====
@@ -248,27 +233,24 @@ def build_core(
         logger.info("✓ Root model rewritten — models are now production-ready")
 
     # ===== GENERATE ROLLUP =====
-    if source_type == "postgres":
-        logger.info("Skipping rollup (not supported for PostgreSQL)")
-    else:
-        logger.info("Generating rollup view...")
-        rollup_sql = adapter.generate_rollup_sql(all_metadata, target_dataset)
-        rollup_path = os.path.join(models_dir, "frg__rollup.sql")
-        with open(rollup_path, "w") as f:
-            f.write(rollup_sql)
-        logger.info("✓ Rollup SQL generated")
+    logger.info("Generating rollup view...")
+    rollup_sql = adapter.generate_rollup_sql(all_metadata, target_dataset)
+    rollup_path = os.path.join(models_dir, "frg__rollup.sql")
+    with open(rollup_path, "w") as f:
+        f.write(rollup_sql)
+    logger.info("✓ Rollup SQL generated")
 
-        # Build rollup
-        dbt_command = (
-            f"dbt build --profile forge --profiles-dir . "
-            f"--select frg__rollup "
-            f"--target {target_dataset}"
-        )
-        rollup_result = run_dbt_command(dbt_command)
-        if rollup_result.returncode != 0:
-            logger.warning(f"Rollup build failed: {rollup_result.stderr}")
-        else:
-            logger.info("✓ Rollup view built")
+    # Build rollup
+    dbt_command = (
+        f"dbt build --profile forge --profiles-dir . "
+        f"--select frg__rollup "
+        f"--target {target_dataset}"
+    )
+    rollup_result = run_dbt_command(dbt_command)
+    if rollup_result.returncode != 0:
+        logger.warning(f"Rollup build failed: {rollup_result.stderr}")
+    else:
+        logger.info("✓ Rollup view built")
 
     # ===== GENERATE ARTIFACTS =====
     logger.info("Generating artifacts...")
