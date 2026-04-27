@@ -213,15 +213,23 @@ class PostgresAdapter(WarehouseAdapter):
         self,
         table_name: str,
         limit: Optional[int] = None,
+        offset: Optional[int] = None,
     ) -> str:
-        """Generate root model SQL."""
-        sql = self._read_template("create_root_aggregate.sql")
-        sql = sql.replace("~SQL_SELECTS~", self.get_json_column_mapping(table_name))
+        """Generate root model SQL.
 
-        if limit is not None:
-            sql = sql.replace("~LIMITER~", f"LIMIT {limit}")
-        else:
-            sql = sql.replace("~LIMITER~", "")
+        Args:
+            table_name: Fully qualified source table name
+            limit: Optional row limit (used for sampling and batch ceiling)
+            offset: Optional row offset (used for batch processing)
+        """
+        sql = self._read_template("create_root_aggregate.sql")
+        sql = sql.replace("~SQL_SELECTS~", self.get_json_column_mapping(
+            table_name, limit=limit, offset=offset,
+        ))
+
+        # Clear the LIMITER placeholder — limit/offset are now embedded
+        # directly in the inner SELECT from get_json_column_mapping()
+        sql = sql.replace("~LIMITER~", "")
 
         return sql
 
@@ -383,7 +391,18 @@ class PostgresAdapter(WarehouseAdapter):
         df = self.execute_query(query)
         return df.columns.tolist()
 
-    def get_json_column_mapping(self, table_name: str) -> str:
+    def get_source_row_count(self, table_name: str) -> int:
+        """Get the total number of rows in a source table."""
+        query = f"SELECT count(1) FROM {table_name}"
+        df = self.execute_query(query)
+        return int(df.iloc[0, 0])
+
+    def get_json_column_mapping(
+        self,
+        table_name: str,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> str:
         """
         Generate SQL that formats table rows as a single jsonb object.
 
@@ -394,7 +413,20 @@ class PostgresAdapter(WarehouseAdapter):
         - non-JSON columns: wrapped via to_jsonb()
 
         Output column "root" is always jsonb.
+
+        Args:
+            table_name: Fully qualified source table name
+            limit: Optional row limit for batch processing
+            offset: Optional row offset for batch processing
         """
+        # Build the LIMIT/OFFSET clause
+        limiter_parts = []
+        if limit is not None:
+            limiter_parts.append(f"LIMIT {limit}")
+        if offset is not None:
+            limiter_parts.append(f"OFFSET {offset}")
+        limiter = " ".join(limiter_parts) if limiter_parts else ""
+
         columns = self.get_table_columns(table_name)
 
         # Single JSON column case
@@ -402,18 +434,15 @@ class PostgresAdapter(WarehouseAdapter):
             col = columns[0]
             col_type = self._detect_column_type(table_name, col)
             if col_type == 'jsonb':
-                # Already jsonb — use directly, no cast
                 cast = ''
             elif col_type == 'json':
-                # json → jsonb (lightweight, same parse tree)
                 cast = '::jsonb'
             else:
-                # text containing JSON → cast to jsonb
                 cast = '::jsonb'
             return (
                 f'SELECT {col}{cast} AS "root" '
                 f"FROM {table_name} "
-                f"~LIMITER~"
+                f"{limiter}"
             )
 
         # Multi-column case: wrap in jsonb_build_object
@@ -424,7 +453,6 @@ class PostgresAdapter(WarehouseAdapter):
                 if col_type == 'jsonb':
                     build_parts.append(f"'{col}', {col}")
                 else:
-                    # json or text → cast to jsonb
                     build_parts.append(f"'{col}', {col}::jsonb")
             else:
                 build_parts.append(f"'{col}', {col}")
@@ -432,6 +460,6 @@ class PostgresAdapter(WarehouseAdapter):
         sql = (
             f"SELECT jsonb_build_object({', '.join(build_parts)}) AS \"root\" "
             f"FROM {table_name} "
-            f"~LIMITER~"
+            f"{limiter}"
         )
         return sql

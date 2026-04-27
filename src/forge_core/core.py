@@ -24,6 +24,7 @@ from forge_core.engine.build_context import (
 )
 from forge_core.engine.root_processor import (
     create_and_build_root_model,
+    create_and_build_root_model_batched,
     get_rows_processed,
     has_root_keys,
 )
@@ -65,6 +66,7 @@ def build_core(
     limit: Optional[int] = None,
     sample: Optional[int] = None,
     clean: bool = True,
+    batch_size: Optional[int] = None,
 ) -> CoreBuildResult:
     """
     Decompose nested JSON into normalized dbt models.
@@ -88,6 +90,9 @@ def build_core(
         limit: Optional row limit for root query (baked into models)
         sample: Optional sample size for schema discovery only (models are unlimited)
         clean: If True, clean target dataset before building (default: True)
+        batch_size: Optional batch ceiling for Postgres root builds.
+            Caps per-query memory by processing source rows in chunks.
+            Only used when source_type is 'postgres'.
 
     Returns:
         CoreBuildResult with metadata, diagrams, and paths
@@ -174,13 +179,23 @@ def build_core(
         logger.info(f"Sample mode: discovering schema from {sample:,} rows")
 
     logger.info("Building root model...")
-    root_result = create_and_build_root_model(
-        adapter=adapter,
-        qualified_table_name=ctx.qualified_table_name,
-        target_dataset=target_dataset,
-        source_type=source_type,
-        limit=discovery_limit,
-    )
+    if batch_size and source_type == "postgres":
+        root_result = create_and_build_root_model_batched(
+            adapter=adapter,
+            qualified_table_name=ctx.qualified_table_name,
+            target_dataset=target_dataset,
+            source_type=source_type,
+            batch_size=batch_size,
+            limit=discovery_limit,
+        )
+    else:
+        root_result = create_and_build_root_model(
+            adapter=adapter,
+            qualified_table_name=ctx.qualified_table_name,
+            target_dataset=target_dataset,
+            source_type=source_type,
+            limit=discovery_limit,
+        )
     logger.info(f"✓ Root model built: {root_result.model_name}")
 
     # ===== CHECK ROOT HAS KEYS =====
