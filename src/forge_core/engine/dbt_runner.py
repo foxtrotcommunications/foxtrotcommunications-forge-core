@@ -15,7 +15,7 @@ import logging
 
 # Import dbt runner for in-process execution
 try:
-    from dbt.cli.main import dbtRunner, dbtRunnerResult
+    from dbt.cli.main import dbtRunner, dbtRunnerResult  # noqa: F401
 except ImportError:
     dbtRunner = None
 
@@ -200,7 +200,7 @@ def run_dbt_command(
             text=True,
             timeout=timeout,
         )
-    except subprocess.TimeoutExpired as e:
+    except subprocess.TimeoutExpired:
         logger.error(f"Command timed out after {timeout}s")
         raise
 

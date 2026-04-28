@@ -183,7 +183,7 @@ class TestValidateBuildContext:
         # serves as the belt after the suspenders)
         # We test validate_build_context directly with a valid context first,
         # then confirm it would have caught it
-        ctx = BuildContext(
+        BuildContext(
             source_type="bigquery",
             source_project="my-project",
             source_database="my_dataset",
@@ -192,7 +192,6 @@ class TestValidateBuildContext:
             target_project="my-project",
         )
         # Now artificially blank out source_project to test validate logic
-        import copy
         ctx_dict = {
             "source_type": "bigquery",
             "source_project": None,  # <-- missing

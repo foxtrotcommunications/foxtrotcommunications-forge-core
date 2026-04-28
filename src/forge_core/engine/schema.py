@@ -111,7 +111,7 @@ def generate_mermaid_diagram(all_metadata):
 
     for table_meta in all_metadata:
         model_name = table_meta.get("model_name")
-        parent_model_table = table_meta.get("parent_model")
+        table_meta.get("parent_model")
         table_path = table_meta.get("table_path", model_name)
         table_label = table_path.replace("`", "")
         node_name = get_node_name(table_label)

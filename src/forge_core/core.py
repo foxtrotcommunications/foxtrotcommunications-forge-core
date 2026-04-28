@@ -8,8 +8,6 @@ without any SaaS or cloud dependencies.
 
 import json
 import os
-import shutil
-import importlib.resources
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -19,8 +17,6 @@ from forge_core.adapters import get_adapter
 from forge_core.engine.build_context import (
     BuildContext,
     validate_build_context,
-    build_qualified_table_name,
-    build_root_table_name,
 )
 from forge_core.engine.root_processor import (
     create_and_build_root_model,
@@ -120,7 +116,7 @@ def build_core(
     job_created_at_str = job_created_at.isoformat() + "Z"
 
     logger.info("=" * 60)
-    logger.info(f"Forge Core — Build Starting")
+    logger.info("Forge Core — Build Starting")
     logger.info(f"Source: {ctx.qualified_table_name}")
     logger.info(f"Target: {target_project}.{target_dataset}")
     logger.info(f"Type: {source_type}")

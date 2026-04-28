@@ -6,12 +6,11 @@ Adapter instantiation tests do NOT connect to any warehouse.
 SQL-generation tests call adapter methods that return strings, requiring no live connection.
 """
 import pytest
-from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from forge_core.adapters import get_adapter
 from forge_core.adapters.base import WarehouseAdapter
-from forge_core.engine.unnesting import create_root_metadata, UnnestingResult
+from forge_core.engine.unnesting import create_root_metadata
 
 
 # ============================================================================
@@ -41,7 +40,7 @@ class TestGetAdapterFactory:
 
     def test_redshift_adapter_class_name(self):
         """RedshiftAdapter should instantiate without connecting (lazy connection)."""
-        psycopg2 = pytest.importorskip("psycopg2", reason="psycopg2 not installed (install [redshift] extra)")
+        pytest.importorskip("psycopg2", reason="psycopg2 not installed (install [redshift] extra)")
         adapter = get_adapter("redshift")
         assert adapter.__class__.__name__ == "RedshiftAdapter"
 

@@ -267,9 +267,9 @@ class BigQueryAdapter(WarehouseAdapter):
         """
         try:
             result_df = self.execute_query(query)
-            if not result_df.empty and result_df.iloc[0, 0] == True:
+            if not result_df.empty and result_df.iloc[0, 0]:
                 return True
-        except Exception as e:
+        except Exception:
             # print(f"Could not check if {column_name} is JSON for table {table_name}. Error: {e}", file=sys.stderr)
             return False
         return False
@@ -347,7 +347,7 @@ class BigQueryAdapter(WarehouseAdapter):
         if limit is not None:
             sql = sql.replace("~LIMITER~", f"\tLIMIT {limit}")
         else:
-            sql = sql.replace("~LIMITER~", f"")
+            sql = sql.replace("~LIMITER~", "")
 
         sql = sql.replace("~LABELS_CONFIG~", "")
 

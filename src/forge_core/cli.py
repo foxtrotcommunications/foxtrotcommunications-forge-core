@@ -13,7 +13,6 @@ Usage:
 import argparse
 import logging
 import sys
-import json
 from forge_core.core import build_core
 
 
@@ -133,14 +132,14 @@ def main():
         )
 
         print(f"\n{'='*60}")
-        print(f"  ✓ Build complete")
+        print("  ✓ Build complete")
         print(f"    Models created:  {result.total_models_created}")
         print(f"    Rows processed:  {result.total_rows_processed}")
         print(f"    Levels:          {result.levels_processed}")
         print(f"    Project dir:     {result.project_dir}")
         if args.sample:
             print(f"    Mode:            SAMPLE ({args.sample:,} rows)")
-            print(f"    Models are production-ready (no LIMIT)")
+            print("    Models are production-ready (no LIMIT)")
             print(f"    Run: cd {result.project_dir} && dbt build")
         print(f"{'='*60}")
 

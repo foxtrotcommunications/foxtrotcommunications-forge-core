@@ -241,7 +241,7 @@ WHERE JSON_ARRAY_LENGTH("{field_name}") > array_indices.arr_idx
         """
         try:
             result_df = self.execute_query(query)
-            if not result_df.empty and result_df.iloc[0, 0] == True:
+            if not result_df.empty and result_df.iloc[0, 0]:
                 return True
         except Exception:
             return False

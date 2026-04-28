@@ -3,7 +3,6 @@ Tests for forge_core.engine.schema
 
 All pure-function tests — no network or warehouse connections required.
 """
-import pytest
 from forge_core.engine.schema import (
     compare_schemas,
     generate_mermaid_diagram,

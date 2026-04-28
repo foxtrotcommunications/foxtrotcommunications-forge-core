@@ -35,7 +35,7 @@ def create_file_in_models(
     try:
         with open(file_path, "w") as w:
             w.write(content)
-    except Exception as e:
+    except Exception:
         logger.error(f"Error file write: {file_path}", exc_info=True)
         raise
 

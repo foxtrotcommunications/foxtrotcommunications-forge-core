@@ -247,7 +247,6 @@ class DatabricksAdapter(WarehouseAdapter):
         - ARRAY<...> - returns empty (no named fields to extract)
         - STRING, BIGINT, etc. - returns empty (scalar types)
         """
-        import re
 
         # Get DISTINCT schemas from ALL rows (no LIMIT)
         # This captures keys that may only exist in some rows
@@ -417,7 +416,7 @@ class DatabricksAdapter(WarehouseAdapter):
         """
         try:
             result_df = self.execute_query(query)
-            if not result_df.empty and result_df.iloc[0, 0] == True:
+            if not result_df.empty and result_df.iloc[0, 0]:
                 return True
         except Exception:
             return False
@@ -710,7 +709,7 @@ GROUP BY r.ingestion_hash, r.ingestion_timestamp, r.idx
             w = WorkspaceClient(config=cfg)
 
             # List tables using SDK
-            print(f"📊 Listing tables via SDK API...", file=sys.stderr)
+            print("📊 Listing tables via SDK API...", file=sys.stderr)
             tables = list(w.tables.list(catalog_name=self.catalog, schema_name=dataset))
 
             if not tables:
@@ -761,7 +760,7 @@ GROUP BY r.ingestion_hash, r.ingestion_timestamp, r.idx
             traceback.print_exc(file=sys.stderr)
             # If schema doesn't exist, that's OK
             if "not found" in str(e).lower() or "does not exist" in str(e).lower():
-                print(f"ℹ️  Schema does not exist, nothing to clean", file=sys.stderr)
+                print("ℹ️  Schema does not exist, nothing to clean", file=sys.stderr)
                 return True
             return False
 

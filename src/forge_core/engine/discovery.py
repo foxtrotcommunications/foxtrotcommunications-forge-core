@@ -8,8 +8,6 @@ Stripped of AI enrichment — produces pure structural metadata.
 import re
 import pandas
 import logging
-import os
-from forge_core.adapters import get_adapter
 from forge_core.engine.context import get_warehouse_adapter
 from forge_core.engine.model_generator import create_file_in_models
 
@@ -147,7 +145,7 @@ def types_builder(table_name, field_name, keys_df, is_array):
             get_types_sql = ""
             sub_object_count = 0
 
-            if get_types_super.isspace() == False:
+            if not get_types_super.isspace():
                 df = pandas.concat(
                     [df, adapter.execute_query(get_types_super)], ignore_index=True
                 )
@@ -156,7 +154,7 @@ def types_builder(table_name, field_name, keys_df, is_array):
         get_types_super = f"""
 {get_types_sql}
 """
-        if get_types_super.isspace() == False:
+        if not get_types_super.isspace():
             df = pandas.concat(
                 [df, adapter.execute_query(get_types_super)], ignore_index=True
             )
@@ -187,7 +185,6 @@ def types_builder(table_name, field_name, keys_df, is_array):
 
     def _stable_rank(group):
         """Rank fields within a prefix group, preserving existing assignments."""
-        prefix = group.name  # the 4-char prefix
         fields = group["field"].tolist()
 
         # Separate locked vs new fields
@@ -222,7 +219,7 @@ def types_builder(table_name, field_name, keys_df, is_array):
 
     # field name must start with a letter or underscore
     t_index = df["table_index"]
-    if t_index[0].isdigit() == True:
+    if t_index[0].isdigit():
         df["table_index"] = "_" + t_index
 
     return df
@@ -273,7 +270,7 @@ def process_table_task(row):
             model_name = base_model_name + "__" + table_index_s
             model_ref = f"{{{{ref('{base_model_name}')}}}}"
 
-        if keys_df.empty == True or keys_df.iloc[0, 0] is None or len(keys_df.iloc[0, 0]) == 0:
+        if keys_df.empty or keys_df.iloc[0, 0] is None or len(keys_df.iloc[0, 0]) == 0:
             return None
 
         current_table_path = row["path"] + "__" + row["field_name"]
