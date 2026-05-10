@@ -6,6 +6,7 @@ Stripped of AI enrichment — produces pure structural metadata.
 """
 
 import re
+import sys
 import pandas
 import logging
 from forge_core.engine.context import get_warehouse_adapter
@@ -216,10 +217,11 @@ def types_builder(table_name, field_name, keys_df, is_array):
     if nan_mask.any():
         nan_fields = df.loc[nan_mask, "field"].tolist()
         nan_prefixes = df.loc[nan_mask, "table_index"].tolist()
-        logger.error(
-            f"NaN in table_key for fields={nan_fields}, prefixes={nan_prefixes}. "
+        print(
+            f"ERROR NaN in table_key for fields={nan_fields}, prefixes={nan_prefixes}. "
             f"field_to_rank keys={list(field_to_rank.keys())}, "
-            f"all df fields={df['field'].tolist()}"
+            f"all df fields={df['field'].tolist()}",
+            file=sys.stderr,
         )
 
     df["table_key"] = df["table_key"].fillna(1).astype(int)
@@ -234,11 +236,12 @@ def types_builder(table_name, field_name, keys_df, is_array):
     # Debug: log all table_index values at the end of types_builder
     nan_indices = [idx for idx in df["table_index"].tolist() if "nan" in str(idx).lower()]
     if nan_indices:
-        logger.error(
-            f"NaN in types_builder output! table={table_name}, "
+        print(
+            f"ERROR NaN in types_builder output! table={table_name}, "
             f"nan_indices={nan_indices}, "
             f"all_fields={df['field'].tolist()}, "
-            f"all_table_index={df['table_index'].tolist()}"
+            f"all_table_index={df['table_index'].tolist()}",
+            file=sys.stderr,
         )
 
     return df
@@ -264,12 +267,13 @@ def process_table_task(row):
 
         # Debug: detect NaN in table_index from queue
         if "nan" in table_index_s.lower():
-            logger.error(
-                f"NaN DETECTED in table_index from queue! "
+            print(
+                f"ERROR NaN DETECTED in table_index from queue! "
                 f"table_index='{table_index_s}', "
                 f"field='{row['field_name']}', "
                 f"table='{row['table_name']}', "
-                f"raw_table_index='{row['table_index']}'"
+                f"raw_table_index='{row['table_index']}'",
+                file=sys.stderr,
             )
 
         is_snowflake = (
