@@ -33,7 +33,7 @@ def update_dbtignore(
         dbt_dir: Path to dbt project directory
     """
     if dbt_dir is None:
-        dbt_dir = "./forge_project"
+        dbt_dir = os.environ.get("FORGE_PROJECT_DIR", "./forge_project")
 
     dbtignore_path = os.path.join(dbt_dir, ".dbtignore")
 
@@ -75,7 +75,7 @@ def run_dbt_command(
         subprocess.CompletedProcess (or compatible) result
     """
     if project_dir is None:
-        project_dir = "./forge_project"
+        project_dir = os.environ.get("FORGE_PROJECT_DIR", "./forge_project")
 
     # Build command as list for safety
     if isinstance(command, str):

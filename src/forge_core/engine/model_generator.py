@@ -23,7 +23,8 @@ def create_file_in_models(
         models_dir: Directory for model files (default: ./forge_project/models)
     """
     if models_dir is None:
-        models_dir = "./forge_project/models"
+        project_dir = os.environ.get("FORGE_PROJECT_DIR", "./forge_project")
+        models_dir = os.path.join(project_dir, "models")
 
     os.makedirs(models_dir, exist_ok=True)
 
@@ -49,7 +50,8 @@ def tag_models_as_excluded(model_names, models_dir: str = None):
         models_dir: Directory containing model files
     """
     if models_dir is None:
-        models_dir = "./forge_project/models"
+        project_dir = os.environ.get("FORGE_PROJECT_DIR", "./forge_project")
+        models_dir = os.path.join(project_dir, "models")
 
     for model_name in model_names:
         if not model_name or model_name.strip() == "":
