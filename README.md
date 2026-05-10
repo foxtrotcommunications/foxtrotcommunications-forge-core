@@ -78,7 +78,7 @@ This works in Jupyter notebooks, plain scripts, Airflow (routes through its own 
               │
               ▼
 ┌─────────────────────────────┐
-│  1. Root Model (frg)        │  Parse JSON → root SELECT
+│  1. Root Model (root)       │  Parse JSON → root SELECT
 └─────────────┬───────────────┘
               │
               ▼
@@ -95,7 +95,7 @@ This works in Jupyter notebooks, plain scripts, Airflow (routes through its own 
               ▼
 ┌─────────────────────────────┐
 │  3. Rollup View              │  JOIN all tables back into
-│     (frg__rollup)            │  nested STRUCT/ARRAY form
+│     (root__rollup)           │  nested STRUCT/ARRAY form
 └─────────────┬───────────────┘
               │
               ▼
@@ -125,10 +125,10 @@ forge_project/
 ├── macros/
 │   └── incremental_tmp_table_dropper.sql
 ├── models/
-│   ├── frg.sql           # Root model
-│   ├── frg__root__....sql # Unnested models (one per level)
-│   ├── frg__rollup.sql   # Rollup view
-│   └── schema.yml        # Column inventory
+│   ├── root.sql           # Root model
+│   ├── root__root__....sql # Unnested models (one per level)
+│   ├── root__rollup.sql   # Rollup view
+│   └── schema.yml         # Column inventory
 └── target/
     ├── schema.json        # JSON Schema
     ├── schema.mmd         # Mermaid diagram
@@ -267,8 +267,8 @@ SELECT
     r.*,
     e.experiment_name,
     e.experiment_status
-FROM `project.dataset.frg__root` r
-JOIN `project.dataset.frg__root__expe1` e
+FROM `project.dataset.root__root` r
+JOIN `project.dataset.root__root__expe1` e
     ON  r.ingestion_hash = e.ingestion_hash
     AND SPLIT(r.idx, '_')[OFFSET(0)] = SPLIT(e.idx, '_')[OFFSET(0)]
 
@@ -278,8 +278,8 @@ SELECT
     e.*,
     t.team_name,
     t.team_role
-FROM `project.dataset.frg__root__expe1` e
-JOIN `project.dataset.frg__root__expe1__team1` t
+FROM `project.dataset.root__root__expe1` e
+JOIN `project.dataset.root__root__expe1__team1` t
     ON  e.ingestion_hash = t.ingestion_hash
     AND SPLIT(e.idx, '_')[OFFSET(0)] = SPLIT(t.idx, '_')[OFFSET(0)]
     AND SPLIT(e.idx, '_')[OFFSET(1)] = SPLIT(t.idx, '_')[OFFSET(1)]
@@ -290,8 +290,8 @@ SELECT
     t.*,
     l.lab_name,
     l.result_value
-FROM `project.dataset.frg__root__expe1__team1` t
-JOIN `project.dataset.frg__root__expe1__team1__lab_1` l
+FROM `project.dataset.root__root__expe1__team1` t
+JOIN `project.dataset.root__root__expe1__team1__lab_1` l
     ON  t.ingestion_hash = l.ingestion_hash
     AND SPLIT(t.idx, '_')[OFFSET(0)] = SPLIT(l.idx, '_')[OFFSET(0)]
     AND SPLIT(t.idx, '_')[OFFSET(1)] = SPLIT(l.idx, '_')[OFFSET(1)]
@@ -302,11 +302,11 @@ SELECT
     r.patient_id,
     e.experiment_name,
     t.team_name
-FROM `project.dataset.frg__root` r
-JOIN `project.dataset.frg__root__expe1` e
+FROM `project.dataset.root__root` r
+JOIN `project.dataset.root__root__expe1` e
     ON  r.ingestion_hash = e.ingestion_hash
     AND SPLIT(r.idx, '_')[OFFSET(0)] = SPLIT(e.idx, '_')[OFFSET(0)]
-JOIN `project.dataset.frg__root__expe1__team1` t
+JOIN `project.dataset.root__root__expe1__team1` t
     ON  e.ingestion_hash = t.ingestion_hash
     AND SPLIT(e.idx, '_')[OFFSET(0)] = SPLIT(t.idx, '_')[OFFSET(0)]
     AND SPLIT(e.idx, '_')[OFFSET(1)] = SPLIT(t.idx, '_')[OFFSET(1)]
@@ -317,15 +317,15 @@ JOIN `project.dataset.frg__root__expe1__team1` t
 ```sql
 -- Depth 0 → 1: root → experiments (1 condition)
 SELECT r.*, e."experiment_name"
-FROM "DATASET"."FRG__ROOT" r
-JOIN "DATASET"."FRG__ROOT__EXPE1" e
+FROM "DATASET"."ROOT__ROOT" r
+JOIN "DATASET"."ROOT__ROOT__EXPE1" e
     ON  r."ingestion_hash" = e."ingestion_hash"
     AND SPLIT_PART(r."idx", '_', 1) = SPLIT_PART(e."idx", '_', 1)
 
 -- Depth 1 → 2: experiments → team (2 conditions)
 SELECT e.*, t."team_name"
-FROM "DATASET"."FRG__ROOT__EXPE1" e
-JOIN "DATASET"."FRG__ROOT__EXPE1__TEAM1" t
+FROM "DATASET"."ROOT__ROOT__EXPE1" e
+JOIN "DATASET"."ROOT__ROOT__EXPE1__TEAM1" t
     ON  e."ingestion_hash" = t."ingestion_hash"
     AND SPLIT_PART(e."idx", '_', 1) = SPLIT_PART(t."idx", '_', 1)
     AND SPLIT_PART(e."idx", '_', 2) = SPLIT_PART(t."idx", '_', 2)
@@ -350,16 +350,16 @@ The child always has one more segment than the parent — that final segment is 
 Table names encode the nesting path with truncated field names:
 
 ```
-frg__root                          ← root extraction
-frg__root__expe1                   ← root.experiments (truncated to 4 chars + counter)
-frg__root__expe1__team1            ← root.experiments[].team
-frg__root__expe1__team1__lab_1     ← root.experiments[].team[].lab_results
-frg__root__hosp1__staf1__nurs1     ← root.hospital[].staff[].nurses
+root__root                          ← root extraction
+root__root__expe1                   ← root.experiments (truncated to 4 chars + counter)
+root__root__expe1__team1            ← root.experiments[].team
+root__root__expe1__team1__lab_1     ← root.experiments[].team[].lab_results
+root__root__hosp1__staf1__nurs1     ← root.hospital[].staff[].nurses
 ```
 
 ### The Rollup View
 
-The `frg__rollup` view automatically reassembles all normalized tables back into nested STRUCT/ARRAY form — reconstructing the original JSON shape as queryable warehouse-native types. Use it when you want the full document without manual joins.
+The `root__rollup` view automatically reassembles all normalized tables back into nested STRUCT/ARRAY form — reconstructing the original JSON shape as queryable warehouse-native types. Use it when you want the full document without manual joins.
 
 ## License
 
