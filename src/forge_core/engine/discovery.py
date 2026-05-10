@@ -231,6 +231,16 @@ def types_builder(table_name, field_name, keys_df, is_array):
     if t_index[0].isdigit():
         df["table_index"] = "_" + t_index
 
+    # Debug: log all table_index values at the end of types_builder
+    nan_indices = [idx for idx in df["table_index"].tolist() if "nan" in str(idx).lower()]
+    if nan_indices:
+        logger.error(
+            f"NaN in types_builder output! table={table_name}, "
+            f"nan_indices={nan_indices}, "
+            f"all_fields={df['field'].tolist()}, "
+            f"all_table_index={df['table_index'].tolist()}"
+        )
+
     return df
 
 
@@ -251,6 +261,16 @@ def process_table_task(row):
         # next table name must be 4 characters, use 0's to fill if not
         table_index_s = row["table_index"]
         table_index_s = re.sub(r"[^a-zA-Z0-9_]", "", table_index_s)
+
+        # Debug: detect NaN in table_index from queue
+        if "nan" in table_index_s.lower():
+            logger.error(
+                f"NaN DETECTED in table_index from queue! "
+                f"table_index='{table_index_s}', "
+                f"field='{row['field_name']}', "
+                f"table='{row['table_name']}', "
+                f"raw_table_index='{row['table_index']}'"
+            )
 
         is_snowflake = (
             getattr(adapter, "__class__", None).__name__ == "SnowflakeAdapter"
