@@ -183,9 +183,13 @@ def types_builder(table_name, field_name, keys_df, is_array):
             f"for {table_name}: {existing_assignments}"
         )
 
-    def _stable_rank(group):
-        """Rank fields within a prefix group, preserving existing assignments."""
-        fields = group["field"].tolist()
+    # Build field → rank mapping per prefix group.
+    # Avoids groupby.apply entirely — that API has pandas-version-dependent
+    # behaviour that can silently produce NaN for single-element groups,
+    # resulting in table names like "codinan" instead of "codi1".
+    field_to_rank = {}
+    for _prefix, group_df in df.groupby("table_index"):
+        fields = group_df["field"].tolist()
 
         # Separate locked vs new fields
         locked = {f: existing_assignments[f] for f in fields
@@ -196,30 +200,16 @@ def types_builder(table_name, field_name, keys_df, is_array):
         used_ranks = set(locked.values())
         next_rank = max(used_ranks, default=0) + 1
 
-        # Assign ranks: locked fields keep theirs, new fields get next available
-        ranks = {}
         for f, r in locked.items():
-            ranks[f] = r
-        for f in sorted(new_fields):  # alphabetical for determinism among new
+            field_to_rank[f] = r
+        for f in sorted(new_fields):  # alphabetical for determinism
             while next_rank in used_ranks:
                 next_rank += 1
-            ranks[f] = next_rank
+            field_to_rank[f] = next_rank
             used_ranks.add(next_rank)
             next_rank += 1
 
-        # Return a Series keyed by the group's original DataFrame index so
-        # the result aligns correctly when assigned back to df["table_key"].
-        # Without this, the deprecated grouping-column behaviour can produce
-        # a MultiIndex result that pandas cannot align, filling with NaN —
-        # which surfaces as table names like "codinan" instead of "codi1".
-        mapped = group["field"].map(ranks)
-        return pandas.Series(mapped.values, index=group.index)
-
-    df["table_key"] = (
-        df.groupby("table_index", group_keys=False)
-        .apply(_stable_rank)
-        .astype(int)
-    )
+    df["table_key"] = df["field"].map(field_to_rank).astype(int)
 
     df["table_index"] = df["table_index"].astype(str) + df["table_key"].astype(str)
 
