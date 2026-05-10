@@ -64,7 +64,7 @@ def main():
     print(f"    Rows:   {result.total_rows_processed}")
     print(f"    Levels: {result.levels_processed}")
     print(f"    Dir:    {result.project_dir}")
-    print(f"{'='*60}")
+    print(f"{'='*60}") 
 
 
 if __name__ == "__main__":

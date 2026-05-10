@@ -14,13 +14,13 @@
 }}
 
 SELECT 
-    concat(idx, '_', cast(ROW_NUMBER() over(partition by ingestion_hash, idx order by to_json_string(`~JSON_FIELD~`)) as string)) idx
-    ,ingestion_hash
-    ,ingestion_timestamp
-    ,CONCAT(table_path, '__', '~JSON_FIELD~') as table_path
+    concat(src_tbl.idx, '_', cast(ROW_NUMBER() over(partition by src_tbl.ingestion_hash, src_tbl.idx order by to_json_string(`~JSON_FIELD~`)) as string)) idx
+    ,src_tbl.ingestion_hash
+    ,src_tbl.ingestion_timestamp
+    ,CONCAT(src_tbl.table_path, '__', '~JSON_FIELD~') as table_path
     ,~DBT_SELECT~
-FROM ~TABLE_NAME~,
-UNNEST(JSON_EXTRACT_ARRAY(`~JSON_FIELD~`)) `~JSON_FIELD~`
+FROM ~TABLE_NAME~ src_tbl,
+UNNEST(JSON_EXTRACT_ARRAY(src_tbl.`~JSON_FIELD~`)) `~JSON_FIELD~`
 where `~JSON_FIELD~` is not null
 {% if is_incremental() %}
 and
