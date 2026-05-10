@@ -174,35 +174,35 @@ class TestSnowflakeAdapterSqlGeneration:
 class TestCreateRootMetadata:
 
     def test_returns_dict(self):
-        meta = create_root_metadata("frg", "`project.dataset.table`")
+        meta = create_root_metadata("root", "`project.dataset.table`")
         assert isinstance(meta, dict)
 
     def test_model_name_set(self):
-        meta = create_root_metadata("frg", "`project.dataset.table`")
-        assert meta["model_name"] == "frg"
+        meta = create_root_metadata("root", "`project.dataset.table`")
+        assert meta["model_name"] == "root"
 
     def test_parent_model_is_none(self):
-        meta = create_root_metadata("frg", "`project.dataset.table`")
+        meta = create_root_metadata("root", "`project.dataset.table`")
         assert meta["parent_model"] is None
 
     def test_depth_is_zero(self):
-        meta = create_root_metadata("frg", "`project.dataset.table`")
+        meta = create_root_metadata("root", "`project.dataset.table`")
         assert meta["depth"] == 0
 
     def test_source_table_stored(self):
         qualified = "`project.dataset.table`"
-        meta = create_root_metadata("frg", qualified)
+        meta = create_root_metadata("root", qualified)
         assert meta["source_table"] == qualified
 
     def test_snowflake_model_name(self):
         meta = create_root_metadata("FRG", '"DB"."SCHEMA"."TABLE"')
         assert meta["model_name"] == "FRG"
 
-    def test_table_path_is_frg(self):
-        meta = create_root_metadata("frg", "`project.dataset.table`")
-        assert meta["table_path"] == "frg"
+    def test_table_path_is_root(self):
+        meta = create_root_metadata("root", "`project.dataset.table`")
+        assert meta["table_path"] == "root"
 
     def test_children_has_root_entry(self):
-        meta = create_root_metadata("frg", "`project.dataset.table`")
+        meta = create_root_metadata("root", "`project.dataset.table`")
         assert len(meta["children"]) == 1
         assert meta["children"][0]["field_name"] == "root"

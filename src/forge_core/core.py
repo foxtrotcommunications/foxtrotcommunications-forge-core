@@ -211,7 +211,7 @@ def build_core(
 
     # ===== SAMPLE MODE: REWRITE ROOT MODEL =====
     # Discovery used a LIMIT, but the output models should be unlimited.
-    # Rewrite frg.sql with the full query so `dbt build` processes all rows.
+    # Rewrite root.sql with the full query so `dbt build` processes all rows.
     if is_sample_mode:
         logger.info("Sample mode: rewriting root model without LIMIT (production-ready)")
         unlimited_root_sql = adapter.get_root_table_sql(ctx.qualified_table_name, limit=None)
@@ -231,7 +231,7 @@ def build_core(
     # ===== GENERATE ROLLUP =====
     logger.info("Generating rollup view...")
     rollup_sql = adapter.generate_rollup_sql(all_metadata, target_dataset)
-    rollup_path = os.path.join(models_dir, "frg__rollup.sql")
+    rollup_path = os.path.join(models_dir, "rollup.sql")
     with open(rollup_path, "w") as f:
         f.write(rollup_sql)
     logger.info("✓ Rollup SQL generated")
@@ -239,7 +239,7 @@ def build_core(
     # Build rollup
     dbt_command = (
         f"dbt build --profile forge --profiles-dir . "
-        f"--select frg__rollup "
+        f"--select rollup "
         f"--target {target_dataset}"
     )
     rollup_result = run_dbt_command(dbt_command)

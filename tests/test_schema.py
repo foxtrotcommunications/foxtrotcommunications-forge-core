@@ -113,18 +113,18 @@ class TestCompareSchemas:
 # Minimal metadata fixture used across diagram tests
 SIMPLE_METADATA = [
     {
-        "model_name": "frg",
+        "model_name": "root",
         "parent_model": None,
         "field_name": "root",
-        "table_path": "frg",
+        "table_path": "root",
         "scalar_fields": [],
         "children": [{"field_name": "items", "type": "ARRAY"}],
     },
     {
-        "model_name": "frg__item1",
-        "parent_model": "frg",
+        "model_name": "root__item1",
+        "parent_model": "root",
         "field_name": "items",
-        "table_path": "frg__items",
+        "table_path": "root__items",
         "scalar_fields": [{"name": "item_id", "original_type": "string"}],
         "children": [],
     },
@@ -143,7 +143,7 @@ class TestGenerateMermaidDiagram:
 
     def test_contains_table_names(self):
         result = generate_mermaid_diagram(SIMPLE_METADATA)
-        assert "frg" in result
+        assert "root" in result
 
     def test_contains_relationship_marker(self):
         result = generate_mermaid_diagram(SIMPLE_METADATA)
@@ -162,10 +162,10 @@ class TestGenerateMermaidDiagram:
         """Ensure backward-compatible string scalar fields work."""
         metadata = [
             {
-                "model_name": "frg",
+                "model_name": "root",
                 "parent_model": None,
                 "field_name": "root",
-                "table_path": "frg",
+                "table_path": "root",
                 "scalar_fields": ["legacy_field"],  # old string format
                 "children": [],
             }
@@ -199,7 +199,7 @@ class TestGenerateSchemaGraph:
     def test_columns_populated_from_scalar_fields(self):
         result = generate_schema_graph(SIMPLE_METADATA)
         # Find the child table
-        child = next(t for t in result["tables"] if "item" in t["name"].lower() or "frg__" in t["name"].lower())
+        child = next(t for t in result["tables"] if "item" in t["name"].lower() or "root__" in t["name"].lower())
         col_names = [c["name"] for c in child["columns"]]
         assert "item_id" in col_names
 
@@ -211,9 +211,9 @@ class TestGenerateSchemaGraph:
     def test_pk_detection_on_id_field(self):
         metadata = [
             {
-                "model_name": "frg",
+                "model_name": "root",
                 "parent_model": None,
-                "table_path": "frg",
+                "table_path": "root",
                 "field_name": "root",
                 "scalar_fields": [{"name": "id", "original_type": "string"}],
                 "children": [],

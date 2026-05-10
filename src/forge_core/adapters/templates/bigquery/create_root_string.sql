@@ -20,7 +20,7 @@ select * from
         ,parse_json(`~JSON_FIELD~`) as `~JSON_FIELD~`
         ,to_hex(md5(to_json_string(`~JSON_FIELD~`))) ingestion_hash
         ,CURRENT_TIMESTAMP() ingestion_timestamp 
-        ,'frg__root' as table_path
+        ,'root' as table_path
     from ~TABLE_NAME~
     where SAFE.parse_json(`~JSON_FIELD~`) is not null
 )

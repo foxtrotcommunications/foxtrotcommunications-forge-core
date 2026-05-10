@@ -19,10 +19,10 @@ def _flat_metadata():
     """Single-level metadata: root with scalar fields only."""
     return [
         {
-            "model_name": "frg",
+            "model_name": "root",
             "parent_model": None,
             "field_name": "root",
-            "table_path": "frg",
+            "table_path": "root",
             "is_array": False,
             "scalar_fields": ["user_id", "email", "created_at"],
             "children": [],
@@ -35,10 +35,10 @@ def _nested_metadata():
     """Two-level metadata: root → orders (array) → scalar fields."""
     return [
         {
-            "model_name": "frg",
+            "model_name": "root",
             "parent_model": None,
             "field_name": "root",
-            "table_path": "frg",
+            "table_path": "root",
             "is_array": False,
             "scalar_fields": ["user_id"],
             "children": [
@@ -47,10 +47,10 @@ def _nested_metadata():
             "depth": 0,
         },
         {
-            "model_name": "frg__orde1",
-            "parent_model": "frg",
+            "model_name": "root__orde1",
+            "parent_model": "root",
             "field_name": "orders",
-            "table_path": "frg__orders",
+            "table_path": "root__orders",
             "is_array": True,
             "scalar_fields": [
                 {"name": "order_id", "original_type": "string"},
@@ -110,10 +110,10 @@ class TestMetadataToJsonSchema:
         # Metadata with no parent_model=None entry
         bad_metadata = [
             {
-                "model_name": "frg__orde1",
-                "parent_model": "frg",
+                "model_name": "root__orde1",
+                "parent_model": "root",
                 "field_name": "orders",
-                "table_path": "frg__orders",
+                "table_path": "root__orders",
                 "scalar_fields": [],
                 "children": [],
             }
@@ -131,10 +131,10 @@ class TestMetadataToJsonSchema:
         """metadata may have scalar_fields as list of dicts (enriched format)."""
         metadata = [
             {
-                "model_name": "frg",
+                "model_name": "root",
                 "parent_model": None,
                 "field_name": "root",
-                "table_path": "frg",
+                "table_path": "root",
                 "scalar_fields": [
                     {"name": "user_id", "original_type": "string"},
                     {"name": "score", "original_type": "float"},
@@ -185,7 +185,7 @@ class TestWriteSchemaYml:
         write_schema_yml(_flat_metadata(), output)
         with open(output) as f:
             parsed = yaml.safe_load(f)
-        assert parsed["models"][0]["name"] == "frg"
+        assert parsed["models"][0]["name"] == "root"
 
     def test_scalar_columns_listed(self, tmp_path):
         output = str(tmp_path / "schema.yml")
@@ -207,10 +207,10 @@ class TestWriteSchemaYml:
         """Enriched dict format for scalar_fields should produce correct column names."""
         metadata = [
             {
-                "model_name": "frg",
+                "model_name": "root",
                 "parent_model": None,
                 "field_name": "root",
-                "table_path": "frg",
+                "table_path": "root",
                 "scalar_fields": [
                     {"name": "order_id", "original_type": "STRING"},
                     {"name": "amount", "original_type": "FLOAT"},
@@ -231,7 +231,7 @@ class TestWriteSchemaYml:
         write_schema_yml(_nested_metadata(), output)
         with open(output) as f:
             parsed = yaml.safe_load(f)
-        root_model = next(m for m in parsed["models"] if m["name"] == "frg")
+        root_model = next(m for m in parsed["models"] if m["name"] == "root")
         col_names = [c["name"] for c in root_model.get("columns", [])]
         assert "orders" in col_names
 

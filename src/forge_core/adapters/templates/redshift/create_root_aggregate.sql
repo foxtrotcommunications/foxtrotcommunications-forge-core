@@ -11,7 +11,7 @@ select
     ,'[' || JSON_SERIALIZE(j."root") || ']' as "root"
     ,MD5(JSON_SERIALIZE("root")) as ingestion_hash
     ,CURRENT_TIMESTAMP as ingestion_timestamp 
-    ,'frg' as table_path
+    ,'root' as table_path
 from 
 (
 ~SQL_SELECTS~

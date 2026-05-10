@@ -73,7 +73,7 @@ class TestBuildRootTableName:
 
     def test_bigquery(self):
         result = build_root_table_name("bigquery", "my-project", "my_dataset")
-        assert result == "`my-project.my_dataset.frg`"
+        assert result == "`my-project.my_dataset.root`"
 
     def test_snowflake(self):
         result = build_root_table_name("snowflake", "MY_DB", "MY_DATASET")
@@ -81,11 +81,11 @@ class TestBuildRootTableName:
 
     def test_databricks(self):
         result = build_root_table_name("databricks", "my_catalog", "my_schema")
-        assert result == "my_catalog.my_schema.frg"
+        assert result == "my_catalog.my_schema.root"
 
     def test_redshift(self):
         result = build_root_table_name("redshift", None, "my_schema")
-        assert result == '"my_schema"."frg"'
+        assert result == '"my_schema"."root"'
 
 
 # ============================================================================
@@ -105,7 +105,7 @@ class TestBuildContext:
         )
         assert ctx.qualified_table_name == "`my-project.my_dataset.my_table`"
 
-    def test_bigquery_root_model_name_is_frg(self):
+    def test_bigquery_root_model_name_is_root(self):
         ctx = BuildContext(
             source_type="bigquery",
             source_project="my-project",
@@ -114,7 +114,7 @@ class TestBuildContext:
             target_dataset="target_ds",
             target_project="my-project",
         )
-        assert ctx.root_model_name == "frg"
+        assert ctx.root_model_name == "root"
 
     def test_snowflake_root_model_name_is_FRG(self):
         ctx = BuildContext(

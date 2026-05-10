@@ -49,7 +49,7 @@ def create_and_build_root_model(
     """
     create_root_sql = adapter.get_root_table_sql(qualified_table_name, limit)
 
-    root_model_name = "FRG" if source_type == "snowflake" else "frg"
+    root_model_name = "ROOT" if source_type == "snowflake" else "root"
 
     create_file_in_models(root_model_name, create_root_sql)
 
@@ -124,10 +124,10 @@ def build_root_table_name_for_keys(
     Build the fully qualified root table name for key discovery.
     """
     if source_type == "snowflake":
-        return f'"{target_project}"."{target_dataset}"."FRG"'
+        return f'"{target_project}"."{target_dataset}"."ROOT"'
     elif source_type == "databricks":
-        return f"{target_project}.{target_dataset}.frg"
+        return f"{target_project}.{target_dataset}.root"
     elif source_type == "redshift":
-        return f'"{target_dataset}"."frg"'
+        return f'"{target_dataset}"."root"'
     else:  # BigQuery
-        return f"`{target_project}.{target_dataset}.frg`"
+        return f"`{target_project}.{target_dataset}.root`"

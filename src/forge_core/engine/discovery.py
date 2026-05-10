@@ -27,7 +27,7 @@ def _get_existing_name_assignments(parent_table_name, prefix_groups):
     All queries stay within the same dataset — no cross-schema access needed.
 
     Args:
-        parent_table_name: Qualified parent table (e.g. `proj.dataset.frg__root__raw_1`)
+        parent_table_name: Qualified parent table (e.g. `proj.dataset.root__raw_1`)
         prefix_groups: Set of 4-char prefixes to probe (e.g. {"exte", "extr"})
 
     Returns:
@@ -43,7 +43,7 @@ def _get_existing_name_assignments(parent_table_name, prefix_groups):
     try:
         cleaned = parent_table_name.replace('`', '').replace('"', '')
         parts = cleaned.split('.')
-        parent_short = parts[-1]  # e.g. "frg__root__raw_1"
+        parent_short = parts[-1]  # e.g. "root__raw_1"
 
         is_snowflake = 'SnowflakeAdapter' in str(type(adapter))
         is_databricks = 'DatabricksAdapter' in str(type(adapter))
@@ -81,7 +81,7 @@ def _get_existing_name_assignments(parent_table_name, prefix_groups):
                         break
 
                     table_path = path_df.iloc[0, 0]
-                    # table_path is e.g. "frg__root__extension"
+                    # table_path is e.g. "root__extension"
                     # The field name is the last segment
                     field_name = table_path.split('__')[-1]
                     assignments[field_name] = rank

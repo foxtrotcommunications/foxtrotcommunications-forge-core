@@ -375,7 +375,7 @@ class DatabricksAdapter(WarehouseAdapter):
         - idx: Row number within each unique ingestion_hash
         - ingestion_hash: MD5 hash of the JSON data
         - ingestion_timestamp: Current timestamp
-        - table_path: 'frg__root'
+        - table_path: 'root'
         - The original JSON field as a STRING column
         """
         template = self._read_template("create_root.sql")
@@ -473,7 +473,7 @@ class DatabricksAdapter(WarehouseAdapter):
         - idx: Row number within each unique ingestion_hash
         - ingestion_hash: MD5 hash of the JSON data
         - ingestion_timestamp: Current timestamp
-        - table_path: 'frg__root'
+        - table_path: 'root'
         - root: The original JSON field as STRING
         """
         # Read the template

@@ -53,7 +53,7 @@ class BuildContext:
         )
         object.__setattr__(self, "root_table_name_for_keys", root_for_keys)
 
-        root_name = "FRG" if self.source_type == "snowflake" else "frg"
+        root_name = "ROOT" if self.source_type == "snowflake" else "root"
         object.__setattr__(self, "root_model_name", root_name)
 
 
@@ -105,16 +105,16 @@ def build_root_table_name(
     Build the root table name for key discovery.
     """
     if source_type == "snowflake":
-        return f'"{target_project}"."{target_dataset}"."FRG"'
+        return f'"{target_project}"."{target_dataset}"."ROOT"'
 
     elif source_type == "databricks":
-        return f"{target_project}.{target_dataset}.frg"
+        return f"{target_project}.{target_dataset}.root"
 
     elif source_type == "redshift":
-        return f'"{target_dataset}"."frg"'
+        return f'"{target_dataset}"."root"'
 
     else:  # BigQuery
-        return f"`{target_project}.{target_dataset}.frg`"
+        return f"`{target_project}.{target_dataset}.root`"
 
 
 def validate_build_context(ctx: BuildContext) -> Tuple[bool, Optional[str]]:

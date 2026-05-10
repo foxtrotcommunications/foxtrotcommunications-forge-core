@@ -35,7 +35,7 @@ def create_root_metadata(
     Create metadata entry for the root model.
 
     Args:
-        root_model_name: Name of root model (frg or FRG)
+        root_model_name: Name of root model (root or ROOT)
         qualified_table_name: Fully qualified source table name
 
     Returns:
@@ -55,7 +55,7 @@ def create_root_metadata(
             }
         ],
         "depth": 0,
-        "table_path": "frg",
+        "table_path": "root",
         "source_table": qualified_table_name,
     }
 
@@ -78,7 +78,7 @@ def execute_iterative_unnesting(
     Args:
         adapter: Warehouse adapter instance
         root_table_name_for_keys: Qualified root table name for key discovery
-        root_model_name: Name of root model (frg or FRG)
+        root_model_name: Name of root model (root or ROOT)
         qualified_table_name: Fully qualified source table name
         target_dataset: Target dataset/schema
         target_project: Target project/database

@@ -175,7 +175,7 @@ if __name__ == "__main__":
     # Example metadata (from the user's Untitled-1 file)
     example_metadata = [
         {
-            "model_name": "frg__root",
+            "model_name": "root",
             "parent_model": None,
             "field_name": "root",
             "is_array": False,
@@ -190,8 +190,8 @@ if __name__ == "__main__":
             "depth": 0,
         },
         {
-            "model_name": "frg__root__JSON_FIELD",
-            "parent_model": "frg__root",
+            "model_name": "root__JSON_FIELD",
+            "parent_model": "root",
             "field_name": "JSON_FIELD",
             "is_array": False,
             "scalar_fields": ["patientblood_pressure"],
@@ -202,8 +202,8 @@ if __name__ == "__main__":
             "depth": 1,
         },
         {
-            "model_name": "frg__root__JSON_FIELD__drug1",
-            "parent_model": "frg__root__JSON_FIELD",
+            "model_name": "root__JSON_FIELD__drug1",
+            "parent_model": "root__JSON_FIELD",
             "field_name": "drug",
             "is_array": False,
             "scalar_fields": ["company", "name_brand", "name_generic"],
@@ -211,8 +211,8 @@ if __name__ == "__main__":
             "depth": 2,
         },
         {
-            "model_name": "frg__root__JSON_FIELD__pati1",
-            "parent_model": "frg__root__JSON_FIELD",
+            "model_name": "root__JSON_FIELD__pati1",
+            "parent_model": "root__JSON_FIELD",
             "field_name": "patient",
             "is_array": False,
             "scalar_fields": ["name", "id", "race", "age"],

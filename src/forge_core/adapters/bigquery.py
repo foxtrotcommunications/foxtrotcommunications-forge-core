@@ -185,7 +185,7 @@ class BigQueryAdapter(WarehouseAdapter):
     ) -> str:
         template = (
             "create_table_array.sql"
-            if table_name == "frg__root"
+            if table_name == "root"
             else "create_table_array.sql"
         )
         sql = self._read_template(template)
