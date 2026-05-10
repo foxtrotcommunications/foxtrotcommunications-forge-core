@@ -77,7 +77,7 @@ class TestBuildRootTableName:
 
     def test_snowflake(self):
         result = build_root_table_name("snowflake", "MY_DB", "MY_DATASET")
-        assert result == '"MY_DB"."MY_DATASET"."FRG"'
+        assert result == '"MY_DB"."MY_DATASET"."ROOT"'
 
     def test_databricks(self):
         result = build_root_table_name("databricks", "my_catalog", "my_schema")
@@ -116,7 +116,7 @@ class TestBuildContext:
         )
         assert ctx.root_model_name == "root"
 
-    def test_snowflake_root_model_name_is_FRG(self):
+    def test_snowflake_root_model_name_is_ROOT(self):
         ctx = BuildContext(
             source_type="snowflake",
             source_database="MY_DB",
@@ -124,7 +124,7 @@ class TestBuildContext:
             target_dataset="MY_TARGET",
             target_project="MY_DB",
         )
-        assert ctx.root_model_name == "FRG"
+        assert ctx.root_model_name == "ROOT"
 
     def test_context_is_immutable(self):
         ctx = BuildContext(

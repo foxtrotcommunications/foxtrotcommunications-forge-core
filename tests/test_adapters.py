@@ -195,8 +195,8 @@ class TestCreateRootMetadata:
         assert meta["source_table"] == qualified
 
     def test_snowflake_model_name(self):
-        meta = create_root_metadata("FRG", '"DB"."SCHEMA"."TABLE"')
-        assert meta["model_name"] == "FRG"
+        meta = create_root_metadata("ROOT", '"DB"."SCHEMA"."TABLE"')
+        assert meta["model_name"] == "ROOT"
 
     def test_table_path_is_root(self):
         meta = create_root_metadata("root", "`project.dataset.table`")
