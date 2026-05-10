@@ -207,7 +207,13 @@ def types_builder(table_name, field_name, keys_df, is_array):
             used_ranks.add(next_rank)
             next_rank += 1
 
-        return group["field"].map(ranks)
+        # Return a Series keyed by the group's original DataFrame index so
+        # the result aligns correctly when assigned back to df["table_key"].
+        # Without this, the deprecated grouping-column behaviour can produce
+        # a MultiIndex result that pandas cannot align, filling with NaN —
+        # which surfaces as table names like "codinan" instead of "codi1".
+        mapped = group["field"].map(ranks)
+        return pandas.Series(mapped.values, index=group.index)
 
     df["table_key"] = (
         df.groupby("table_index", group_keys=False)
