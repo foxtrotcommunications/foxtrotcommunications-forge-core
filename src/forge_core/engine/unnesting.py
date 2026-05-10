@@ -68,6 +68,7 @@ def execute_iterative_unnesting(
     target_dataset: str,
     target_project: str,
     job_created_at_str: str,
+    **kwargs,
 ) -> UnnestingResult:
     """
     Execute iterative unnesting until no more nested fields are found.
