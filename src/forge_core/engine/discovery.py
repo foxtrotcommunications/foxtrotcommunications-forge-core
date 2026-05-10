@@ -209,7 +209,20 @@ def types_builder(table_name, field_name, keys_df, is_array):
             used_ranks.add(next_rank)
             next_rank += 1
 
-    df["table_key"] = df["field"].map(field_to_rank).astype(int)
+    df["table_key"] = df["field"].map(field_to_rank)
+
+    # Debug: log any NaN values in table_key before int conversion
+    nan_mask = df["table_key"].isna()
+    if nan_mask.any():
+        nan_fields = df.loc[nan_mask, "field"].tolist()
+        nan_prefixes = df.loc[nan_mask, "table_index"].tolist()
+        logger.error(
+            f"NaN in table_key for fields={nan_fields}, prefixes={nan_prefixes}. "
+            f"field_to_rank keys={list(field_to_rank.keys())}, "
+            f"all df fields={df['field'].tolist()}"
+        )
+
+    df["table_key"] = df["table_key"].fillna(1).astype(int)
 
     df["table_index"] = df["table_index"].astype(str) + df["table_key"].astype(str)
 
