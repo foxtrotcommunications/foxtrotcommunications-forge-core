@@ -6,6 +6,41 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.1.3] — 2026-05-11
+
+### Breaking
+- **Naming convention:** Removed `frg__` prefix from all generated table names — models
+  now use the root table name directly. Existing runs with `frg__` prefixed tables will
+  need a clean rebuild.
+
+### Fixed
+- **Critical:** Prevent NaN in table name truncation ranks when `groupby.apply` returns
+  float values — replaced with an iterative loop and `fillna(1)` safety net.
+- Fix alias collision in BigQuery array templates — parent table now aliased to prevent
+  root column name conflicts.
+- Respect `FORGE_PROJECT_DIR` env var for model and dbt output paths.
+- Accept `**kwargs` in `execute_iterative_unnesting` for forward compatibility.
+- Stable table naming — prevent rank shifts on incremental runs.
+
+### Changed
+- Removed PostgreSQL adapter support (added and removed during this cycle).
+- Removed debug logging added during NaN investigation — kept `fillna(1)` safety net.
+
+### Docs
+- Updated README with `frg→root` naming convention.
+- Added formal determinism and correctness proof.
+- Added space and time complexity analysis.
+- Added Forge vs manual comparison (FHIR claims benchmark).
+- Added BigQuery cost analysis and querying comparison.
+- Added incremental loading section and logging setup to README.
+- Removed Redshift beta and PostgreSQL from supported warehouses.
+
+### CI
+- Added ruff lint job and fixed all lint errors.
+- Added `merge_group` trigger for merge queue support.
+
+---
+
 ## [0.1.2] — 2026-04-22
 
 ### Fixed
