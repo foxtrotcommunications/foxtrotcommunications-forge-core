@@ -32,7 +32,8 @@ forge-core build \
   --source-project my-gcp-project \
   --source-database my_dataset \
   --source-table my_json_table \
-  --target-dataset my_target
+  --target-dataset my_target \
+  --model-prefix my_prefix   # optional: custom table naming
 ```
 
 ### Python API
@@ -46,6 +47,7 @@ result = build_core(
     source_database="my_dataset",
     source_table_name="my_json_table",
     target_dataset="my_target",
+    model_prefix="my_prefix",  # optional: custom table naming
 )
 
 print(f"Created {result.total_models_created} models")
@@ -121,19 +123,21 @@ After a build, your project directory looks like:
 ```
 forge_project/
 ├── dbt_project.yml
-├── profiles.yml          # Auto-generated
+├── profiles.yml                    # Auto-generated
 ├── macros/
 │   └── incremental_tmp_table_dropper.sql
 ├── models/
-│   ├── root.sql           # Root model
-│   ├── root__root__....sql # Unnested models (one per level)
-│   ├── root__rollup.sql   # Rollup view
-│   └── schema.yml         # Column inventory
+│   ├── <prefix>.sql                # Root model
+│   ├── <prefix>__root__....sql     # Unnested models (one per level)
+│   ├── <prefix>__rollup.sql        # Rollup view
+│   └── schema.yml                  # Column inventory
 └── target/
-    ├── schema.json        # JSON Schema
-    ├── schema.mmd         # Mermaid diagram
-    └── index.html         # dbt docs
+    ├── schema.json                 # JSON Schema
+    ├── schema.mmd                  # Mermaid diagram
+    └── index.html                  # dbt docs
 ```
+
+Where `<prefix>` is your `--model-prefix` value (defaults to `root` if omitted).
 
 ## Use in Airflow / Containers
 
@@ -345,21 +349,53 @@ AND SPLIT(parent.idx, '_')[OFFSET(N-1)] = SPLIT(child.idx, '_')[OFFSET(N-1)]
 
 The child always has one more segment than the parent — that final segment is the child's own position within the parent array.
 
+### Custom Model Prefix
+
+By default, all generated tables are prefixed with `root` (e.g., `root__root__experiments`). Use `--model-prefix` to give your tables a meaningful, domain-specific name:
+
+```bash
+forge-core build \
+  --source-type bigquery \
+  --source-project my-project \
+  --source-database raw \
+  --source-table raw_condition \
+  --target-dataset normalized \
+  --model-prefix fhir_condition
+```
+
+This produces tables like:
+
+```
+fhir_condition                      ← root model
+fhir_condition__root                ← root extraction
+fhir_condition__root__cate1         ← category array
+fhir_condition__root__code1         ← code struct
+fhir_condition__rollup              ← rollup view
+```
+
+Prefix rules:
+- Must start with a letter or underscore
+- Only letters, digits, and single underscores allowed
+- No double underscores (`__`) — these are used as level separators
+- Automatically uppercased for Snowflake
+
 ### Table Naming Convention
 
 Table names encode the nesting path with truncated field names:
 
 ```
-root__root                          ← root extraction
-root__root__expe1                   ← root.experiments (truncated to 4 chars + counter)
-root__root__expe1__team1            ← root.experiments[].team
-root__root__expe1__team1__lab_1     ← root.experiments[].team[].lab_results
-root__root__hosp1__staf1__nurs1     ← root.hospital[].staff[].nurses
+<prefix>__root                          ← root extraction
+<prefix>__root__expe1                   ← root.experiments (truncated to 4 chars + counter)
+<prefix>__root__expe1__team1            ← root.experiments[].team
+<prefix>__root__expe1__team1__lab_1     ← root.experiments[].team[].lab_results
+<prefix>__root__hosp1__staf1__nurs1     ← root.hospital[].staff[].nurses
 ```
+
+Where `<prefix>` defaults to `root` if `--model-prefix` is not specified.
 
 ### The Rollup View
 
-The `root__rollup` view automatically reassembles all normalized tables back into nested STRUCT/ARRAY form — reconstructing the original JSON shape as queryable warehouse-native types. Use it when you want the full document without manual joins.
+The `<prefix>__rollup` view automatically reassembles all normalized tables back into nested STRUCT/ARRAY form — reconstructing the original JSON shape as queryable warehouse-native types. Use it when you want the full document without manual joins.
 
 ## License
 
