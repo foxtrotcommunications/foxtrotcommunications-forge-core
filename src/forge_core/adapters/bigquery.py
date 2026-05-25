@@ -339,6 +339,7 @@ class BigQueryAdapter(WarehouseAdapter):
         self,
         table_name: str,
         limit: Optional[int] = None,
+        root_table_path: Optional[str] = None,
     ) -> str:
         template = "create_root_aggregate.sql"
         sql = self._read_template(template)
@@ -350,6 +351,7 @@ class BigQueryAdapter(WarehouseAdapter):
             sql = sql.replace("~LIMITER~", "")
 
         sql = sql.replace("~LABELS_CONFIG~", "")
+        sql = sql.replace("~ROOT_TABLE_PATH~", root_table_path or "root")
 
         return sql
 
@@ -425,72 +427,95 @@ class BigQueryAdapter(WarehouseAdapter):
                 if model_name not in models_with_valid_ctes:
                     continue
 
-                # We need to join with children CTEs (only those that are valid)
-                joins = []
-                for child in model["children"]:
-                    child_model_name = f"{model_name}__{child['model_suffix']}"
-
-                    # Check if child model exists AND has a valid CTE
-                    if (
-                        child_model_name not in models
-                        or child_model_name not in models_with_valid_ctes
-                    ):
-                        continue
-
-                    child_cte_name = f"{child_model_name}_agg"
-
-                    join_conditions = []
-                    # Join on all segments up to parent's depth + 1
-                    for i in range(depth + 1):
-                        join_conditions.append(
-                            f"SPLIT(t.idx, '_')[OFFSET({i})] = SPLIT({child_cte_name}.idx, '_')[OFFSET({i})]"
-                        )
-
-                    joins.append(
-                        f"LEFT JOIN {child_cte_name} ON t.ingestion_hash = {child_cte_name}.ingestion_hash AND {' AND '.join(join_conditions)}"
-                    )
-
-                struct_fields = []
-
                 # Helper to extract field name from either string or dict format
                 def get_field_name(field):
                     if isinstance(field, dict):
                         return field.get("name", str(field))
                     return str(field)
 
-                for field in model["scalar_fields"]:
-                    field_name = get_field_name(field)
-                    struct_fields.append(f"t.`{field_name}`")
+                # Collect valid children for this model
+                valid_children = []
                 for child in model["children"]:
                     child_model_name = f"{model_name}__{child['model_suffix']}"
-                    # Only include child if it exists AND has a valid CTE
                     if (
                         child_model_name in models
                         and child_model_name in models_with_valid_ctes
                     ):
-                        child_cte_name = f"{child_model_name}_agg"
-                        if child["type"] == "ARRAY":
-                            struct_fields.append(
-                                f"ARRAY_AGG({child_cte_name}.`{child['field_name']}_struct` IGNORE NULLS) as `{child['field_name']}`"
-                            )
-                        else:
-                            struct_fields.append(
-                                f"ANY_VALUE({child_cte_name}.`{child['field_name']}_struct`) as `{child['field_name']}`"
-                            )
+                        valid_children.append(child)
+
+                # For each valid child, emit a _pre CTE that pre-aggregates
+                # to 1 row per parent join key. This prevents cartesian joins
+                # when the parent has multiple child arrays.
+                for child in valid_children:
+                    child_model_name = f"{model_name}__{child['model_suffix']}"
+                    child_cte_name = f"{child_model_name}_agg"
+                    pre_cte_name = f"{child_model_name}_pre"
+
+                    # Build the GROUP BY key that matches the parent's join
+                    key_parts = []
+                    key_aliases = []
+                    for i in range(depth + 1):
+                        key_parts.append(
+                            f"SPLIT(idx, '_')[OFFSET({i})] as `_k{i}`"
+                        )
+                        key_aliases.append(f"`_k{i}`")
+
+                    if child["type"] == "ARRAY":
+                        agg_expr = f"ARRAY_AGG(`{child['field_name']}_struct` IGNORE NULLS) as `{child['field_name']}`"
+                    else:
+                        agg_expr = f"ANY_VALUE(`{child['field_name']}_struct`) as `{child['field_name']}`"
+
+                    pre_cte = f"""{pre_cte_name} AS (
+    SELECT
+        ingestion_hash,
+        {', '.join(key_parts)},
+        {agg_expr}
+    FROM {child_cte_name}
+    GROUP BY ingestion_hash, {', '.join(key_aliases)}
+)"""
+                    ctes.append(pre_cte)
+
+                # Now build the _agg CTE that joins to pre-aggregated children
+                struct_fields = []
+
+                for field in model["scalar_fields"]:
+                    field_name = get_field_name(field)
+                    struct_fields.append(f"t.`{field_name}`")
+
+                joins = []
+                for child in valid_children:
+                    child_model_name = f"{model_name}__{child['model_suffix']}"
+                    pre_cte_name = f"{child_model_name}_pre"
+
+                    join_conditions = [
+                        f"t.ingestion_hash = {pre_cte_name}.ingestion_hash"
+                    ]
+                    for i in range(depth + 1):
+                        join_conditions.append(
+                            f"SPLIT(t.idx, '_')[OFFSET({i})] = {pre_cte_name}.`_k{i}`"
+                        )
+                    joins.append(
+                        f"LEFT JOIN {pre_cte_name} ON {' AND '.join(join_conditions)}"
+                    )
+
+                    struct_fields.append(
+                        f"{pre_cte_name}.`{child['field_name']}`"
+                    )
 
                 # This should not happen after first pass, but safety check
                 if not struct_fields:
                     continue
 
-                # Extract field names for GROUP BY clause
-                scalar_field_names = [get_field_name(f) for f in model["scalar_fields"]]
-                group_by_suffix = (
-                    ", " + ", ".join([f"t.`{f}`" for f in scalar_field_names])
-                    if scalar_field_names
-                    else ""
-                )
-
-                cte_sql = f"{model_name}_agg AS (\n    SELECT \n        t.ingestion_hash,\n        t.idx,\n        STRUCT(\n            {', '.join(struct_fields)}\n        ) as `{model['field_name']}_struct`\n    FROM {{{{ ref('{model_prefix}{model_name}') }}}} t\n    {' '.join(joins)}\n    GROUP BY t.ingestion_hash, t.idx{group_by_suffix}\n)"
+                cte_sql = f"""{model_name}_agg AS (
+    SELECT
+        t.ingestion_hash,
+        t.idx,
+        STRUCT(
+            {', '.join(struct_fields)}
+        ) as `{model['field_name']}_struct`
+    FROM {{{{ ref('{model_prefix}{model_name}') }}}} t
+    {' '.join(joins)}
+)"""
                 ctes.append(cte_sql)
 
         # 4. Final Root Select
@@ -499,8 +524,9 @@ class BigQueryAdapter(WarehouseAdapter):
             return ""
 
         root = root_model[0]
-        root_joins = []
         root_struct_fields = []
+        root_joins = []
+        root_valid_children = []
 
         for child in root["children"]:
             child_model_name = f"{root['model_name']}__{child['model_suffix']}"
@@ -512,24 +538,34 @@ class BigQueryAdapter(WarehouseAdapter):
             ):
                 continue
 
+            root_valid_children.append(child)
+
+            # Pre-aggregate each child CTE to 1 row per root join key
             child_cte_name = f"{child_model_name}_agg"
-
-            join_conditions = [
-                f"SPLIT(r.idx, '_')[OFFSET(0)] = SPLIT({child_cte_name}.idx, '_')[OFFSET(0)]"
-            ]
-
-            root_joins.append(
-                f"LEFT JOIN {child_cte_name} ON r.ingestion_hash = {child_cte_name}.ingestion_hash AND {' AND '.join(join_conditions)}"
-            )
+            pre_cte_name = f"{child_model_name}_pre"
 
             if child["type"] == "ARRAY":
-                root_struct_fields.append(
-                    f"ARRAY_AGG({child_cte_name}.`{child['field_name']}_struct` IGNORE NULLS) as `{child['field_name']}`"
-                )
+                agg_expr = f"ARRAY_AGG(`{child['field_name']}_struct` IGNORE NULLS) as `{child['field_name']}`"
             else:
-                root_struct_fields.append(
-                    f"ANY_VALUE({child_cte_name}.`{child['field_name']}_struct`) as `{child['field_name']}`"
-                )
+                agg_expr = f"ANY_VALUE(`{child['field_name']}_struct`) as `{child['field_name']}`"
+
+            pre_cte = f"""{pre_cte_name} AS (
+    SELECT
+        ingestion_hash,
+        SPLIT(idx, '_')[OFFSET(0)] as `_k0`,
+        {agg_expr}
+    FROM {child_cte_name}
+    GROUP BY ingestion_hash, `_k0`
+)"""
+            ctes.append(pre_cte)
+
+            # Build join and struct reference for final SELECT
+            root_joins.append(
+                f"LEFT JOIN {pre_cte_name} ON r.ingestion_hash = {pre_cte_name}.ingestion_hash AND SPLIT(r.idx, '_')[OFFSET(0)] = {pre_cte_name}.`_k0`"
+            )
+            root_struct_fields.append(
+                f"{pre_cte_name}.`{child['field_name']}`"
+            )
 
         config_block = """
 {{
@@ -564,7 +600,6 @@ SELECT
     ) as `{root['model_name']}`
 FROM {{{{ ref('{model_prefix}{root['model_name']}') }}}} r
 {' '.join(root_joins)}
-GROUP BY r.ingestion_hash, r.ingestion_timestamp, r.idx
 """
         return final_sql
 

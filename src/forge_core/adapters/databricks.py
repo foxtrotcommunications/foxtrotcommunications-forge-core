@@ -466,6 +466,7 @@ class DatabricksAdapter(WarehouseAdapter):
         self,
         table_name: str,
         limit: Optional[int] = None,
+        root_table_path: Optional[str] = None,
     ) -> str:
         """Generate root table SQL using create_root.sql template.
 
@@ -497,6 +498,7 @@ class DatabricksAdapter(WarehouseAdapter):
         # Replace placeholders - use alias 'root' as that's what downstream expects
         sql = template.replace("~TABLE_NAME~", table_name)
         sql = sql.replace("~JSON_FIELD~", json_field)
+        sql = sql.replace("~ROOT_TABLE_PATH~", root_table_path or "root")
 
         # Add limit if specified
         if limit:

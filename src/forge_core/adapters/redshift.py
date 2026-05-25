@@ -277,6 +277,7 @@ WHERE JSON_ARRAY_LENGTH("{field_name}") > array_indices.arr_idx
         self,
         table_name: str,
         limit: Optional[int] = None,
+        root_table_path: Optional[str] = None,
     ) -> str:
         """Generate root table SQL."""
         sql = self.get_json_column_mapping(table_name)

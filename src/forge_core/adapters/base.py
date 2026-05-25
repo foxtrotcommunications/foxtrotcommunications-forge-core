@@ -59,6 +59,7 @@ class WarehouseAdapter(ABC):
         field_name: str,
         is_string: bool,
         limit: Optional[int] = None,
+        root_table_path: Optional[str] = None,
     ) -> str:
         """Generates the SQL for the root table."""
         pass

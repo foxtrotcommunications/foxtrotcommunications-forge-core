@@ -6,6 +6,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.1.4] — 2026-05-25
+
+### Added
+- **Custom model prefix** (`--model-prefix`): Users can supply a custom prefix for all
+  generated model names (e.g., `--model-prefix fhir_condition` produces tables like
+  `fhir_condition__root__*` instead of `root__root__*`). Prefix is validated and
+  uppercased automatically for Snowflake.
+- `table_path` metadata column now dynamically reflects the model prefix, matching actual
+  table names in the warehouse instead of the hardcoded `root` / `FRG` values.
+
+### Fixed
+- **Critical:** Rollup SQL cartesian join — when a model had multiple child arrays,
+  LEFT JOINs created an m×n fan-out producing duplicated elements in ARRAY_AGG. Fixed
+  by pre-aggregating each child CTE to one row per parent join key before joining.
+
+---
+
 ## [0.1.3] — 2026-05-11
 
 ### Breaking

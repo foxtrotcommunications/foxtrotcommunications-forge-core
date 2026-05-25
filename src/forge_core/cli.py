@@ -93,6 +93,11 @@ def main():
         action="store_true",
         help="Enable verbose logging",
     )
+    build_parser.add_argument(
+        "--model-prefix",
+        default=None,
+        help="Custom prefix for model names (e.g. 'ishgt_job_offers' produces ishgt_job_offers__root__*)",
+    )
 
     # ===== VERSION command =====
     subparsers.add_parser("version", help="Show version")
@@ -129,6 +134,7 @@ def main():
             limit=args.limit,
             sample=args.sample,
             clean=not args.no_clean,
+            model_prefix=args.model_prefix,
         )
 
         print(f"\n{'='*60}")

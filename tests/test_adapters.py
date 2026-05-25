@@ -206,3 +206,13 @@ class TestCreateRootMetadata:
         meta = create_root_metadata("root", "`project.dataset.table`")
         assert len(meta["children"]) == 1
         assert meta["children"][0]["field_name"] == "root"
+
+    def test_table_path_matches_model_name_with_prefix(self):
+        """table_path should use the model name (prefix) so it matches actual table names."""
+        meta = create_root_metadata("fhir_condition", "`project.dataset.table`")
+        assert meta["table_path"] == "fhir_condition"
+
+    def test_table_path_matches_snowflake_model_name(self):
+        meta = create_root_metadata("ISHGT_JOB_OFFERS", '"DB"."SCHEMA"."TABLE"')
+        assert meta["table_path"] == "ISHGT_JOB_OFFERS"
+

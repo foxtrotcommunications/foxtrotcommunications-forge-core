@@ -20,7 +20,7 @@ select * from
         ,`~JSON_FIELD~` as `~JSON_FIELD~`
         ,to_hex(md5(to_json_string(`~JSON_FIELD~`))) ingestion_hash
         ,CURRENT_TIMESTAMP() ingestion_timestamp 
-        ,'root' as table_path
+        ,'~ROOT_TABLE_PATH~' as table_path
     from ~TABLE_NAME~
     where `~JSON_FIELD~` is not null
 )

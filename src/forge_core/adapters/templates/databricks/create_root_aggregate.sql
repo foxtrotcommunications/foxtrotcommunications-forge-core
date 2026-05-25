@@ -12,7 +12,7 @@ select
     ,concat('[', cast(to_json(j.`root`) as string), ']') as `root`
     ,md5(cast(to_json(`root`) as string)) as ingestion_hash
     ,current_timestamp() as ingestion_timestamp 
-    ,'root' as table_path
+    ,'~ROOT_TABLE_PATH~' as table_path
 from 
 (
 ~SQL_SELECTS~

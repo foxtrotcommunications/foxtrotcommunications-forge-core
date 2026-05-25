@@ -36,6 +36,7 @@ def main():
     parser.add_argument("--target-dataset", required=True)
     parser.add_argument("--target-project", default=None)
     parser.add_argument("--limit", type=int, default=100, help="Row limit for testing")
+    parser.add_argument("--model-prefix", default=None, help="Custom prefix for model names")
 
     args = parser.parse_args()
 
@@ -46,6 +47,8 @@ def main():
     print(f" Source: {args.source_project}.{args.source_database}.{args.source_table}")
     print(f" Target: {target_project}.{args.target_dataset}")
     print(f" Limit:  {args.limit}")
+    if args.model_prefix:
+        print(f" Prefix: {args.model_prefix}")
     print(f"{'='*60}\n")
 
     result = build_core(
@@ -56,6 +59,7 @@ def main():
         target_dataset=args.target_dataset,
         target_project=target_project,
         limit=args.limit,
+        model_prefix=args.model_prefix,
     )
 
     print(f"\n{'='*60}")

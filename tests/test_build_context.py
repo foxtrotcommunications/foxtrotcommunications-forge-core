@@ -249,3 +249,185 @@ class TestValidateBuildContext:
         )
         ok, err = validate_build_context(ctx)
         assert ok is True
+
+
+# ============================================================================
+# Model Prefix
+# ============================================================================
+
+class TestModelPrefix:
+    """Tests for custom model_prefix behavior."""
+
+    def test_default_no_prefix_bigquery(self):
+        ctx = BuildContext(
+            source_type="bigquery",
+            source_project="my-project",
+            source_database="my_dataset",
+            source_table_name="my_table",
+            target_dataset="target_ds",
+            target_project="my-project",
+        )
+        assert ctx.root_model_name == "root"
+        assert ctx.model_prefix is None
+
+    def test_custom_prefix_bigquery(self):
+        ctx = BuildContext(
+            source_type="bigquery",
+            source_project="my-project",
+            source_database="my_dataset",
+            source_table_name="my_table",
+            target_dataset="target_ds",
+            target_project="my-project",
+            model_prefix="ishgt_job_offers",
+        )
+        assert ctx.root_model_name == "ishgt_job_offers"
+
+    def test_custom_prefix_snowflake_uppercased(self):
+        ctx = BuildContext(
+            source_type="snowflake",
+            source_database="MY_DB",
+            source_table_name="MY_TABLE",
+            target_dataset="MY_TARGET",
+            target_project="MY_DB",
+            model_prefix="ishgt_job_offers",
+        )
+        assert ctx.root_model_name == "ISHGT_JOB_OFFERS"
+
+    def test_custom_prefix_databricks(self):
+        ctx = BuildContext(
+            source_type="databricks",
+            source_database="my_catalog",
+            source_table_name="my_table",
+            target_dataset="my_target",
+            target_project="my_catalog",
+            model_prefix="fhir_patients",
+        )
+        assert ctx.root_model_name == "fhir_patients"
+
+    def test_custom_prefix_redshift(self):
+        ctx = BuildContext(
+            source_type="redshift",
+            source_database="my_db",
+            source_table_name="my_table",
+            target_dataset="my_target",
+            model_prefix="api_responses",
+        )
+        assert ctx.root_model_name == "api_responses"
+
+    def test_prefix_changes_root_table_name_bigquery(self):
+        ctx = BuildContext(
+            source_type="bigquery",
+            source_project="my-project",
+            source_database="my_dataset",
+            source_table_name="my_table",
+            target_dataset="target_ds",
+            target_project="my-project",
+            model_prefix="ishgt_job_offers",
+        )
+        assert ctx.root_table_name_for_keys == "`my-project.target_ds.ishgt_job_offers`"
+
+    def test_prefix_changes_root_table_name_snowflake(self):
+        ctx = BuildContext(
+            source_type="snowflake",
+            source_database="MY_DB",
+            source_table_name="MY_TABLE",
+            target_dataset="MY_TARGET",
+            target_project="MY_DB",
+            model_prefix="ishgt_job_offers",
+        )
+        assert ctx.root_table_name_for_keys == '"MY_DB"."MY_TARGET"."ISHGT_JOB_OFFERS"'
+
+
+class TestModelPrefixValidation:
+    """Tests for model_prefix validation in validate_build_context."""
+
+    def _ctx_with_prefix(self, prefix):
+        return BuildContext(
+            source_type="bigquery",
+            source_project="my-project",
+            source_database="my_dataset",
+            source_table_name="my_table",
+            target_dataset="target_ds",
+            target_project="my-project",
+            model_prefix=prefix,
+        )
+
+    def test_valid_prefix_passes(self):
+        ctx = self._ctx_with_prefix("ishgt_job_offers")
+        ok, err = validate_build_context(ctx)
+        assert ok is True
+        assert err is None
+
+    def test_valid_prefix_with_numbers(self):
+        ctx = self._ctx_with_prefix("api_v2_responses")
+        ok, err = validate_build_context(ctx)
+        assert ok is True
+
+    def test_valid_prefix_single_word(self):
+        ctx = self._ctx_with_prefix("patients")
+        ok, err = validate_build_context(ctx)
+        assert ok is True
+
+    def test_valid_prefix_underscore_start(self):
+        ctx = self._ctx_with_prefix("_internal")
+        ok, err = validate_build_context(ctx)
+        assert ok is True
+
+    def test_double_underscore_rejected(self):
+        ctx = self._ctx_with_prefix("foo__bar")
+        ok, err = validate_build_context(ctx)
+        assert ok is False
+        assert "__" in err
+
+    def test_hyphen_rejected(self):
+        ctx = self._ctx_with_prefix("foo-bar")
+        ok, err = validate_build_context(ctx)
+        assert ok is False
+
+    def test_space_rejected(self):
+        ctx = self._ctx_with_prefix("foo bar")
+        ok, err = validate_build_context(ctx)
+        assert ok is False
+
+    def test_starts_with_digit_rejected(self):
+        ctx = self._ctx_with_prefix("1_bad_prefix")
+        ok, err = validate_build_context(ctx)
+        assert ok is False
+
+    def test_none_prefix_passes(self):
+        ctx = self._ctx_with_prefix(None)
+        ok, err = validate_build_context(ctx)
+        assert ok is True
+
+
+class TestBuildRootTableNameWithPrefix:
+    """Tests for build_root_table_name with custom root_model_name."""
+
+    def test_bigquery_default(self):
+        result = build_root_table_name("bigquery", "my-project", "my_dataset")
+        assert result == "`my-project.my_dataset.root`"
+
+    def test_bigquery_custom(self):
+        result = build_root_table_name(
+            "bigquery", "my-project", "my_dataset", "ishgt_job_offers"
+        )
+        assert result == "`my-project.my_dataset.ishgt_job_offers`"
+
+    def test_snowflake_custom(self):
+        result = build_root_table_name(
+            "snowflake", "MY_DB", "MY_DATASET", "ISHGT_JOB_OFFERS"
+        )
+        assert result == '"MY_DB"."MY_DATASET"."ISHGT_JOB_OFFERS"'
+
+    def test_databricks_custom(self):
+        result = build_root_table_name(
+            "databricks", "my_catalog", "my_schema", "fhir_patients"
+        )
+        assert result == "my_catalog.my_schema.fhir_patients"
+
+    def test_redshift_custom(self):
+        result = build_root_table_name(
+            "redshift", None, "my_schema", "api_responses"
+        )
+        assert result == '"my_schema"."api_responses"'
+

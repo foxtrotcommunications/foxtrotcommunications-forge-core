@@ -5,9 +5,14 @@ Immutable configuration dataclass for a build.
 Stripped of SaaS-specific fields (pricing, analytics consent, org ID).
 """
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Tuple
+
+# Prefix must start with a letter or underscore, contain only alphanumerics
+# and single underscores, and must NOT contain "__" (the model-name separator).
+_VALID_PREFIX_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,7 @@ class BuildContext:
     source_project: Optional[str] = None  # BigQuery only
     source_schema: Optional[str] = None   # Schema for SF/DB/Redshift
     target_project: Optional[str] = None
+    model_prefix: Optional[str] = None    # Custom prefix for model names
     job_created_at: datetime = field(default_factory=datetime.now)
 
     # Computed fields (set during initialization)
@@ -46,15 +52,24 @@ class BuildContext:
         )
         object.__setattr__(self, "qualified_table_name", qualified_name)
 
+        # Compute root model name from prefix (or default "root"/"ROOT")
+        if self.model_prefix:
+            root_name = (
+                self.model_prefix.upper()
+                if self.source_type == "snowflake"
+                else self.model_prefix
+            )
+        else:
+            root_name = "ROOT" if self.source_type == "snowflake" else "root"
+        object.__setattr__(self, "root_model_name", root_name)
+
         root_for_keys = build_root_table_name(
             self.source_type,
             self.target_project,
             self.target_dataset,
+            root_name,
         )
         object.__setattr__(self, "root_table_name_for_keys", root_for_keys)
-
-        root_name = "ROOT" if self.source_type == "snowflake" else "root"
-        object.__setattr__(self, "root_model_name", root_name)
 
 
 # ============================================================================
@@ -100,21 +115,31 @@ def build_root_table_name(
     source_type: str,
     target_project: Optional[str],
     target_dataset: str,
+    root_model_name: Optional[str] = None,
 ) -> str:
     """
     Build the root table name for key discovery.
+
+    Args:
+        source_type: Warehouse type
+        target_project: Target project/database
+        target_dataset: Target dataset/schema
+        root_model_name: Override for the root model name (default: 'root'/'ROOT')
     """
+    if root_model_name is None:
+        root_model_name = "ROOT" if source_type == "snowflake" else "root"
+
     if source_type == "snowflake":
-        return f'"{target_project}"."{target_dataset}"."ROOT"'
+        return f'"{target_project}"."{target_dataset}"."{root_model_name}"'
 
     elif source_type == "databricks":
-        return f"{target_project}.{target_dataset}.root"
+        return f"{target_project}.{target_dataset}.{root_model_name}"
 
     elif source_type == "redshift":
-        return f'"{target_dataset}"."root"'
+        return f'"{target_dataset}"."{root_model_name}"'
 
     else:  # BigQuery
-        return f"`{target_project}.{target_dataset}.root`"
+        return f"`{target_project}.{target_dataset}.{root_model_name}`"
 
 
 def validate_build_context(ctx: BuildContext) -> Tuple[bool, Optional[str]]:
@@ -137,5 +162,19 @@ def validate_build_context(ctx: BuildContext) -> Tuple[bool, Optional[str]]:
 
     if not ctx.target_dataset:
         return False, "target_dataset is required"
+
+    # Validate model_prefix if provided
+    if ctx.model_prefix:
+        if '__' in ctx.model_prefix:
+            return False, (
+                "model_prefix must not contain '__' (double underscore) — "
+                "it is reserved as the model-name separator"
+            )
+        if not _VALID_PREFIX_RE.match(ctx.model_prefix):
+            return False, (
+                "model_prefix must start with a letter or underscore and "
+                "contain only letters, digits, and underscores "
+                f"(got: '{ctx.model_prefix}')"
+            )
 
     return True, None

@@ -30,6 +30,7 @@ def create_and_build_root_model(
     target_dataset: str,
     source_type: str,
     limit: Optional[int] = None,
+    root_model_name: Optional[str] = None,
 ) -> RootBuildResult:
     """
     Create root model SQL, execute dbt build, and track rows processed.
@@ -40,6 +41,7 @@ def create_and_build_root_model(
         target_dataset: Target dataset for dbt
         source_type: Type of warehouse ('bigquery', 'snowflake', etc.)
         limit: Optional row limit for root query
+        root_model_name: Override for the root model name (default: 'root'/'ROOT')
 
     Returns:
         RootBuildResult with model name, rows processed, and SQL
@@ -47,9 +49,12 @@ def create_and_build_root_model(
     Raises:
         RuntimeError: If root build fails
     """
-    create_root_sql = adapter.get_root_table_sql(qualified_table_name, limit)
+    create_root_sql = adapter.get_root_table_sql(
+        qualified_table_name, limit, root_table_path=root_model_name
+    )
 
-    root_model_name = "ROOT" if source_type == "snowflake" else "root"
+    if root_model_name is None:
+        root_model_name = "ROOT" if source_type == "snowflake" else "root"
 
     create_file_in_models(root_model_name, create_root_sql)
 

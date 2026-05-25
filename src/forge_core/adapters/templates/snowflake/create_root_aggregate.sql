@@ -11,7 +11,7 @@ select
     ,'[' || TO_JSON(j."root")::VARCHAR || ']' as "root"
     ,MD5(TO_JSON("root")::VARCHAR) as ingestion_hash
     ,CURRENT_TIMESTAMP() as ingestion_timestamp 
-    ,'FRG' as table_path
+    ,'~ROOT_TABLE_PATH~' as table_path
 from 
 (
 ~SQL_SELECTS~

@@ -18,7 +18,7 @@ select
     ,"[" || to_json_string(j.`root`) || "]" `root`
     ,to_hex(md5(to_json_string(`root`))) ingestion_hash
     ,CURRENT_TIMESTAMP() ingestion_timestamp 
-    ,'root' as table_path
+    ,'~ROOT_TABLE_PATH~' as table_path
 from 
 (
 ~SQL_SELECTS~

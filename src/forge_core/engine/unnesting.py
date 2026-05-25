@@ -55,7 +55,7 @@ def create_root_metadata(
             }
         ],
         "depth": 0,
-        "table_path": "root",
+        "table_path": root_model_name,
         "source_table": qualified_table_name,
     }
 

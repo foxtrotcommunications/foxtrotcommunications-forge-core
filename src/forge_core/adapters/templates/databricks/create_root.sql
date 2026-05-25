@@ -14,7 +14,7 @@ SELECT * FROM
         CONCAT('[', CAST(`~JSON_FIELD~` AS STRING), ']') AS root,
         md5(CAST(`~JSON_FIELD~` AS STRING)) AS ingestion_hash,
         CURRENT_TIMESTAMP() AS ingestion_timestamp,
-        'root' AS table_path
+        '~ROOT_TABLE_PATH~' AS table_path
     FROM ~TABLE_NAME~
     WHERE `~JSON_FIELD~` IS NOT NULL
 )

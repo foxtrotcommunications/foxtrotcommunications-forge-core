@@ -61,6 +61,7 @@ def build_core(
     limit: Optional[int] = None,
     sample: Optional[int] = None,
     clean: bool = True,
+    model_prefix: Optional[str] = None,
 ) -> CoreBuildResult:
     """
     Decompose nested JSON into normalized dbt models.
@@ -84,6 +85,7 @@ def build_core(
         limit: Optional row limit for root query (baked into models)
         sample: Optional sample size for schema discovery only (models are unlimited)
         clean: If True, clean target dataset before building (default: True)
+        model_prefix: Optional custom prefix for model names (e.g. 'ishgt_job_offers')
 
     Returns:
         CoreBuildResult with metadata, diagrams, and paths
@@ -106,6 +108,7 @@ def build_core(
         source_project=source_project,
         source_schema=source_schema,
         target_project=target_project,
+        model_prefix=model_prefix,
     )
 
     is_valid, error = validate_build_context(ctx)
@@ -120,6 +123,8 @@ def build_core(
     logger.info(f"Source: {ctx.qualified_table_name}")
     logger.info(f"Target: {target_project}.{target_dataset}")
     logger.info(f"Type: {source_type}")
+    if model_prefix:
+        logger.info(f"Model prefix: {model_prefix}")
     logger.info("=" * 60)
 
     # ===== SCAFFOLD DBT PROJECT =====
@@ -176,6 +181,7 @@ def build_core(
         target_dataset=target_dataset,
         source_type=source_type,
         limit=discovery_limit,
+        root_model_name=ctx.root_model_name,
     )
     logger.info(f"✓ Root model built: {root_result.model_name}")
 
@@ -231,7 +237,8 @@ def build_core(
     # ===== GENERATE ROLLUP =====
     logger.info("Generating rollup view...")
     rollup_sql = adapter.generate_rollup_sql(all_metadata, target_dataset)
-    rollup_path = os.path.join(models_dir, "rollup.sql")
+    rollup_model_name = f"{ctx.root_model_name}__rollup" if model_prefix else "rollup"
+    rollup_path = os.path.join(models_dir, f"{rollup_model_name}.sql")
     with open(rollup_path, "w") as f:
         f.write(rollup_sql)
     logger.info("✓ Rollup SQL generated")
@@ -239,7 +246,7 @@ def build_core(
     # Build rollup
     dbt_command = (
         f"dbt build --profile forge --profiles-dir . "
-        f"--select rollup "
+        f"--select {rollup_model_name} "
         f"--target {target_dataset}"
     )
     rollup_result = run_dbt_command(dbt_command)

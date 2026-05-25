@@ -340,6 +340,7 @@ class SnowflakeAdapter(WarehouseAdapter):
         self,
         table_name: str,
         limit: Optional[int] = None,
+        root_table_path: Optional[str] = None,
     ) -> str:
         """Generate root table SQL."""
         template = "create_root_aggregate.sql"
@@ -350,6 +351,8 @@ class SnowflakeAdapter(WarehouseAdapter):
             sql = sql.replace("~LIMITER~", f"\tLIMIT {limit}")
         else:
             sql = sql.replace("~LIMITER~", "")
+
+        sql = sql.replace("~ROOT_TABLE_PATH~", root_table_path or "FRG")
 
         return sql
 
